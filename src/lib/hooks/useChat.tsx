@@ -113,7 +113,7 @@ const checkConfig = async (
     }
 
     const chatModelProvider =
-      providers.find((p) => p.id === chatModelProviderId) ??
+      providers.find((p) => p.id === chatModelProviderId && p.chatModels.length > 0) ??
       providers.find((p) => p.chatModels.length > 0);
 
     if (!chatModelProvider) {
@@ -130,7 +130,7 @@ const checkConfig = async (
     chatModelKey = chatModel.key;
 
     const embeddingModelProvider =
-      providers.find((p) => p.id === embeddingModelProviderId) ??
+      providers.find((p) => p.id === embeddingModelProviderId && p.embeddingModels.length > 0) ??
       providers.find((p) => p.embeddingModels.length > 0);
 
     if (!embeddingModelProvider) {
