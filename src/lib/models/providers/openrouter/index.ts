@@ -5,6 +5,7 @@ import BaseEmbedding from '../../base/embedding';
 import BaseModelProvider from '../../base/provider';
 import BaseLLM from '../../base/llm';
 import OpenRouterLLM from './openrouterLLM';
+import OpenAIEmbedding from '../openai/openaiEmbedding';
 
 interface OpenRouterConfig {
     apiKey: string;
@@ -83,7 +84,18 @@ class OpenRouterProvider extends BaseModelProvider<OpenRouterConfig> {
     }
 
     async loadEmbeddingModel(key: string): Promise<BaseEmbedding<any>> {
-        throw new Error('OpenRouter Provider does not support embedding models.');
+        const modelList = await this.getModelList();
+        const exists = modelList.embedding.find((m) => m.key === key);
+
+        if (!exists) {
+            throw new Error('Error Loading OpenRouter Embedding Model. Invalid Model Selected');
+        }
+
+        return new OpenAIEmbedding({
+            apiKey: this.config.apiKey,
+            model: key,
+            baseURL: 'https://openrouter.ai/api/v1',
+        });
     }
 
     static parseAndValidate(raw: any): OpenRouterConfig {
