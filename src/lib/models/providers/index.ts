@@ -10,6 +10,7 @@ import AnthropicProvider from './anthropic';
 import LMStudioProvider from './lmstudio';
 import MinimaxProvider from './minimax';
 import OpenRouterProvider from './openrouter';
+import ZAIProvider from './zai';
 
 export const providers: Record<string, ProviderConstructor<any>> = {
   openai: OpenAIProvider,
@@ -22,6 +23,7 @@ export const providers: Record<string, ProviderConstructor<any>> = {
   lmstudio: LMStudioProvider,
   minimax: MinimaxProvider,
   openrouter: OpenRouterProvider,
+  zai: ZAIProvider,
 };
 
 export const getModelProvidersUIConfigSection =

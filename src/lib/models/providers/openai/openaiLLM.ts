@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import BaseLLM from '../../base/llm';
-import { zodTextFormat, zodResponseFormat } from 'openai/helpers/zod';
+import { zodTextFormat } from 'openai/helpers/zod';
 import {
   GenerateObjectInput,
   GenerateOptions,
@@ -212,7 +212,7 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
   }
 
   async generateObject<T>(input: GenerateObjectInput): Promise<T> {
-    const response = await this.openAIClient.chat.completions.parse({
+    const response = await this.openAIClient.chat.completions.create({
       messages: this.convertToOpenAIMessages(input.messages),
       model: this.config.model,
       temperature:
@@ -226,7 +226,7 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
         this.config.options?.frequencyPenalty,
       presence_penalty:
         input.options?.presencePenalty ?? this.config.options?.presencePenalty,
-      response_format: zodResponseFormat(input.schema, 'object'),
+      response_format: { type: 'json_object' },
     });
 
     if (response.choices && response.choices.length > 0) {
