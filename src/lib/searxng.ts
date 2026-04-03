@@ -18,6 +18,17 @@ interface SearxngSearchResult {
   iframe_src?: string;
 }
 
+const DEFAULT_ENGINES = [
+  'brave',
+  'bing',
+  'startpage',
+  'yandex',
+  'crowdview',
+  'mojeek',
+  'wikipedia',
+  'aol',
+];
+
 export const searchSearxng = async (
   query: string,
   opts?: SearxngSearchOptions,
@@ -27,8 +38,13 @@ export const searchSearxng = async (
   const url = new URL(`${searxngURL}/search?format=json`);
   url.searchParams.append('q', query);
 
+  // Use caller-provided engines, or fall back to the hardcoded default list
+  const engines = opts?.engines?.length ? opts.engines : DEFAULT_ENGINES;
+  url.searchParams.append('engines', engines.join(','));
+
   if (opts) {
     Object.keys(opts).forEach((key) => {
+      if (key === 'engines') return; // already handled above
       const value = opts[key as keyof SearxngSearchOptions];
       if (Array.isArray(value)) {
         url.searchParams.append(key, value.join(','));
