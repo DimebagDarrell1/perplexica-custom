@@ -206,8 +206,10 @@ class Researcher {
       })
       .filter((r) => r !== undefined);
 
+    const sourceBlockId = crypto.randomUUID();
+
     session.emitBlock({
-      id: crypto.randomUUID(),
+      id: sourceBlockId,
       type: 'source',
       data: filteredSearchResults,
     });
@@ -215,6 +217,7 @@ class Researcher {
     return {
       findings: actionOutput,
       searchFindings: filteredSearchResults,
+      sourceBlockId,
     };
   }
 }

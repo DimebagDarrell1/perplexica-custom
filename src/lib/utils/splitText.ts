@@ -17,7 +17,21 @@ export const splitText = (
   maxTokens = 512,
   overlapTokens = 64,
 ): string[] => {
-  const segments = text.split(splitRegex).filter(Boolean);
+  const maxCharsPerOversizedSegment = Math.max(1, maxTokens * 4);
+  const segments = text
+    .split(splitRegex)
+    .filter(Boolean)
+    .flatMap((segment) => {
+      if (getTokenCount(segment) <= maxTokens) {
+        return [segment];
+      }
+
+      const chunks: string[] = [];
+      for (let i = 0; i < segment.length; i += maxCharsPerOversizedSegment) {
+        chunks.push(segment.slice(i, i + maxCharsPerOversizedSegment));
+      }
+      return chunks;
+    });
 
   if (segments.length === 0) {
     return [];
@@ -39,6 +53,10 @@ export const splitText = (
       }
 
       currentTokenCount += segmentTokenCounts[chunkEnd];
+      chunkEnd++;
+    }
+
+    if (chunkEnd === chunkStart) {
       chunkEnd++;
     }
 

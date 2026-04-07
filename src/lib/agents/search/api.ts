@@ -4,6 +4,11 @@ import { classify } from './classifier';
 import Researcher from './researcher';
 import { getWriterPrompt } from '@/lib/prompts/search/writer';
 import { WidgetExecutor } from './widgets';
+import {
+  prepareWriterContext,
+  formatWriterContext,
+  truncateChatHistory,
+} from './writerContext';
 
 class APISearchAgent {
   async searchAsync(session: SessionManager, input: SearchAgentInput) {
@@ -41,10 +46,19 @@ class APISearchAgent {
       searchPromise,
     ]);
 
+    // --- Two-stage context pipeline ---
+    // Rank → scrape top URLs → select relevant chunks
+    const filteredChunks = await prepareWriterContext(
+      searchResults?.searchFindings,
+      input.followUp,
+      classification.standaloneFollowUp,
+      input.config.embedding,
+    );
+
     if (searchResults) {
       session.emit('data', {
         type: 'searchResults',
-        data: searchResults.searchFindings,
+        data: filteredChunks,
       });
     }
 
@@ -52,21 +66,10 @@ class APISearchAgent {
       type: 'researchComplete',
     });
 
-    const finalContext =
-      searchResults?.searchFindings
-        .map(
-          (f, index) =>
-            `<result index=${index + 1} title=${f.metadata.title}>${f.content}</result>`,
-        )
-        .join('\n') || '';
-
-    const widgetContext = widgetOutputs
-      .map((o) => {
-        return `<result>${o.llmContext}</result>`;
-      })
-      .join('\n-------------\n');
-
-    const finalContextWithWidgets = `<search_results note="These are the search results and assistant can cite these">\n${finalContext}\n</search_results>\n<widgets_result noteForAssistant="Its output is already showed to the user, assistant can use this information to answer the query but do not CITE this as a souce">\n${widgetContext}\n</widgets_result>`;
+    const finalContextWithWidgets = formatWriterContext(
+      filteredChunks,
+      widgetOutputs,
+    );
 
     const writerPrompt = getWriterPrompt(
       finalContextWithWidgets,
@@ -74,13 +77,15 @@ class APISearchAgent {
       input.config.mode,
     );
 
+    const truncatedHistory = truncateChatHistory(input.chatHistory);
+
     const answerStream = input.config.llm.streamText({
       messages: [
         {
           role: 'system',
           content: writerPrompt,
         },
-        ...input.chatHistory,
+        ...truncatedHistory,
         {
           role: 'user',
           content: input.followUp,
