@@ -53,6 +53,7 @@ class APISearchAgent {
       input.followUp,
       classification.standaloneFollowUp,
       input.config.embedding,
+      input.config.mode,
     );
 
     if (searchResults) {

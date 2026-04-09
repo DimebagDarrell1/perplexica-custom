@@ -1,6 +1,7 @@
 import BaseEmbedding from '@/lib/models/base/embedding';
 import { Chunk } from '@/lib/types';
-import { buildFilteredContext } from './contextFilter';
+import { buildFilteredContext, ContextFilterConfig } from './contextFilter';
+import type { SearchAgentConfig } from './types';
 
 /** Maximum number of chat history messages to include in the writer LLM call. */
 export const MAX_CHAT_HISTORY_MESSAGES = 20;
@@ -16,6 +17,24 @@ const escapeXml = (value: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
 
+const MODE_CONTEXT_FILTER_CONFIG: Record<
+  SearchAgentConfig['mode'],
+  Pick<ContextFilterConfig, 'topKUrls' | 'topKChunks'>
+> = {
+  speed: {
+    topKUrls: 5,
+    topKChunks: 15,
+  },
+  balanced: {
+    topKUrls: 10,
+    topKChunks: 30,
+  },
+  quality: {
+    topKUrls: 20,
+    topKChunks: 60,
+  },
+};
+
 /**
  * Prepare the filtered writer context from search results.
  *
@@ -28,8 +47,10 @@ export const prepareWriterContext = async (
   followUp: string,
   standaloneFollowUp: string | undefined,
   embeddingModel: BaseEmbedding<any>,
+  mode: SearchAgentConfig['mode'],
 ): Promise<Chunk[]> => {
   let filteredChunks = searchFindings || [];
+  const contextFilterConfig = MODE_CONTEXT_FILTER_CONFIG[mode];
 
   if (filteredChunks.length > 0) {
     const controller = new AbortController();
@@ -42,7 +63,7 @@ export const prepareWriterContext = async (
           standaloneFollowUp,
           filteredChunks,
           embeddingModel,
-          {},
+          contextFilterConfig,
           controller.signal,
         ),
         new Promise<Chunk[]>((resolve) => {

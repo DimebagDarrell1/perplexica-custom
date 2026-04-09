@@ -106,6 +106,7 @@ class SearchAgent {
       input.followUp,
       classification.standaloneFollowUp,
       input.config.embedding,
+      input.config.mode,
     );
 
     if (searchResults?.sourceBlockId) {
