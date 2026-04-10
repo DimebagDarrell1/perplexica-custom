@@ -2,6 +2,7 @@ import BaseEmbedding from '@/lib/models/base/embedding';
 import { Chunk } from '@/lib/types';
 import { buildFilteredContext, ContextFilterConfig } from './contextFilter';
 import type { SearchAgentConfig } from './types';
+import UploadStore from '@/lib/uploads/store';
 
 /** Maximum number of chat history messages to include in the writer LLM call. */
 export const MAX_CHAT_HISTORY_MESSAGES = 20;
@@ -110,10 +111,30 @@ export const prepareWriterContext = async (
 export const formatWriterContext = (
   filteredChunks: Chunk[],
   widgetOutputs: { llmContext: string }[],
+  fileIds: string[] = [],
 ): string => {
   const hasUploadedFileContext = filteredChunks.some((chunk) =>
     String(chunk.metadata.url || '').startsWith('file_id://'),
   );
+
+  let uploadedFilesContext = '';
+
+  if (fileIds.length > 0) {
+    try {
+      const fileData = UploadStore.getFileData(fileIds);
+      uploadedFilesContext = fileData
+        .map(
+          (file, index) =>
+            `<file index="${index + 1}" name="${escapeXml(file.fileName)}">${escapeXml(file.initialContent)}</file>`,
+        )
+        .join('\n');
+    } catch (error) {
+      console.error(
+        '[formatWriterContext] Failed to load uploaded file excerpts:',
+        error,
+      );
+    }
+  }
 
   const searchContext = filteredChunks
     .map((f, index) => {
@@ -132,7 +153,7 @@ export const formatWriterContext = (
     .map((o) => `<result>${escapeXml(o.llmContext)}</result>`)
     .join('\n-------------\n');
 
-  return `<search_results note="${hasUploadedFileContext ? 'These results include excerpts from user-uploaded files. If any result has source_type=&quot;uploaded_file&quot;, the user DID attach a file in this chat. Use those excerpts as document context and do not claim that no file was attached.' : 'These are the search results and assistant can cite these.'}">\n${searchContext}\n</search_results>\n<widgets_result noteForAssistant="Its output is already showed to the user, assistant can use this information to answer the query but do not CITE this as a souce">\n${widgetContext}\n</widgets_result>`;
+  return `<uploaded_files noteForAssistant="${uploadedFilesContext ? 'These are direct excerpts from files the user attached in this chat. Treat them as primary user-provided document context and use them when answering.' : 'No uploaded file excerpts were loaded.'}">\n${uploadedFilesContext}\n</uploaded_files>\n<search_results note="${hasUploadedFileContext ? 'These results include excerpts from user-uploaded files. If any result has source_type=&quot;uploaded_file&quot;, the user DID attach a file in this chat. Use those excerpts as document context and do not claim that no file was attached.' : 'These are the search results and assistant can cite these.'}">\n${searchContext}\n</search_results>\n<widgets_result noteForAssistant="Its output is already showed to the user, assistant can use this information to answer the query but do not CITE this as a souce">\n${widgetContext}\n</widgets_result>`;
 };
 
 /**

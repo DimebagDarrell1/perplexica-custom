@@ -127,6 +127,7 @@ class SearchAgent {
       const finalContextWithWidgets = formatWriterContext(
         filteredChunks,
         widgetOutputs,
+        input.config.fileIds,
       );
 
       const writerPrompt = getWriterPrompt(
