@@ -1,4 +1,7 @@
+import db from '@/lib/db';
+import { messages } from '@/lib/db/schema';
 import SessionManager from '@/lib/session';
+import { eq } from 'drizzle-orm';
 
 export const POST = async (
   req: Request,
@@ -10,6 +13,12 @@ export const POST = async (
     const session = SessionManager.getSession(id);
 
     if (!session) {
+      await db
+        .update(messages)
+        .set({ status: 'error' })
+        .where(eq(messages.backendId, id))
+        .execute();
+
       return Response.json({ message: 'Session not found' }, { status: 404 });
     }
 

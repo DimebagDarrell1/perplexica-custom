@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import BaseLLM from '../../base/llm';
-import { zodTextFormat } from 'openai/helpers/zod';
+import { zodResponseFormat, zodTextFormat } from 'openai/helpers/zod';
 import {
   GenerateObjectInput,
   GenerateOptions,
@@ -212,7 +212,7 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
   }
 
   async generateObject<T>(input: GenerateObjectInput): Promise<T> {
-    const response = await this.openAIClient.chat.completions.create({
+    const response = await this.openAIClient.chat.completions.parse({
       messages: this.convertToOpenAIMessages(input.messages),
       model: this.config.model,
       temperature:
@@ -226,22 +226,23 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
         this.config.options?.frequencyPenalty,
       presence_penalty:
         input.options?.presencePenalty ?? this.config.options?.presencePenalty,
-      response_format: { type: 'json_object' },
+      response_format: zodResponseFormat(input.schema, 'object'),
     });
 
     if (response.choices && response.choices.length > 0) {
+      const rawContent = response.choices[0].message.content || '';
       try {
-        const raw = response.choices[0].message.content || '';
-        const cleaned = stripMarkdownFences(raw);
         return input.schema.parse(
           JSON.parse(
-            repairJson(cleaned, {
+            repairJson(rawContent, {
               extractJson: true,
             }) as string,
           ),
         ) as T;
       } catch (err) {
-        throw new Error(`Error parsing response from OpenAI: ${err}`);
+        throw new Error(
+          `Error parsing response from OpenAI: ${err}\nRaw response: ${rawContent}`,
+        );
       }
     }
 
@@ -253,7 +254,7 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
 
     const stream = this.openAIClient.responses.stream({
       model: this.config.model,
-      input: input.messages,
+      input: input.messages as any,
       temperature:
         input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
       top_p: input.options?.topP ?? this.config.options?.topP,
@@ -284,7 +285,9 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
         try {
           yield parse(stripMarkdownFences(chunk.text)) as T;
         } catch (err) {
-          throw new Error(`Error parsing response from OpenAI: ${err}`);
+          throw new Error(
+            `Error parsing response from OpenAI: ${err}\nRaw response: ${chunk.text}`,
+          );
         }
       }
     }

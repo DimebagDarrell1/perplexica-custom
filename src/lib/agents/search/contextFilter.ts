@@ -2,6 +2,7 @@ import BaseEmbedding from '@/lib/models/base/embedding';
 import computeSimilarity from '@/lib/utils/computeSimilarity';
 import { splitText } from '@/lib/utils/splitText';
 import { Chunk } from '@/lib/types';
+import Scraper from '@/lib/scraper';
 import TurnDown from 'turndown';
 
 const turndownService = new TurnDown();
@@ -146,6 +147,7 @@ const DEFAULT_CONFIG: ContextFilterConfig = {
 };
 
 const MAX_SNIPPET_EMBEDDING_CHARS = 8000;
+const MIN_USEFUL_MARKDOWN_CHARS = 500;
 
 const formatSnippetForEmbedding = (chunk: Chunk): string => {
   const text = `${chunk.metadata.title || ''} ${chunk.content}`;
@@ -213,6 +215,11 @@ export const scrapeRelevantUrls = async (
   signal?: AbortSignal,
 ): Promise<{ url: string; title: string; content: string }[]> => {
   const CONCURRENCY_LIMIT = 5;
+
+  const truncateContent = (content: string) =>
+    content.length > maxPageLength
+      ? content.slice(0, maxPageLength) + '\n\n[Content truncated due to length]'
+      : content;
 
   const urls = [
     ...new Set(
@@ -336,14 +343,27 @@ export const scrapeRelevantUrls = async (
             html.match(/<title>(.*?)<\/title>/i)?.[1] || `Content from ${url}`;
           const markdown = turndownService.turndown(html);
 
-          // Truncate excessively long pages
-          const truncated =
-            markdown.length > maxPageLength
-              ? markdown.slice(0, maxPageLength) +
-                '\n\n[Content truncated due to length]'
-              : markdown;
+          if (markdown.trim().length < MIN_USEFUL_MARKDOWN_CHARS) {
+            try {
+              const scraped = await Scraper.scrape(currentUrl);
+              const scrapedContent = truncateContent(scraped.content);
 
-          return { url, title, content: truncated };
+              if (scrapedContent.trim().length >= markdown.trim().length) {
+                return {
+                  url: currentUrl,
+                  title: scraped.title || title,
+                  content: scrapedContent,
+                };
+              }
+            } catch {
+              // Fall back to the lighter fetch-based markdown path.
+            }
+          }
+
+          // Truncate excessively long pages
+          const truncated = truncateContent(markdown);
+
+          return { url: currentUrl, title, content: truncated };
         } catch {
           return null;
         } finally {

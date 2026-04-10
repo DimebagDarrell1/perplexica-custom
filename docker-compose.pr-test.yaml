@@ -1,0 +1,10 @@
+services:
+  perplexica-pr-test:
+    build:
+      context: https://github.com/DimebagDarrell1/perplexica-custom.git#codex/vane-integration-pass:Perplexica
+    container_name: perplexica-pr-test
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    volumes:
+      - /mnt/user/appdata/perplexica-pr-test/data:/home/perplexica/data

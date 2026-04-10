@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /home/perplexica
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY --from=builder /home/perplexica/public ./public
 COPY --from=builder /home/perplexica/.next/static ./public/_next/static
@@ -32,6 +33,7 @@ COPY --from=builder /home/perplexica/.next/standalone ./
 COPY --from=builder /home/perplexica/data ./data
 COPY drizzle ./drizzle
 
+RUN npx playwright install --with-deps chromium-headless-shell
 RUN mkdir /home/perplexica/uploads
 
 RUN useradd --shell /bin/bash --system \

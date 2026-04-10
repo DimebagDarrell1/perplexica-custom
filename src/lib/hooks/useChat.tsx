@@ -432,6 +432,19 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
           method: 'POST',
         });
 
+        if (!res.ok) {
+          setLoading(false);
+          isReconnectingRef.current = false;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.messageId === lastMsg.messageId
+                ? { ...msg, status: 'error' as const }
+                : msg,
+            ),
+          );
+          return;
+        }
+
         if (!res.body) throw new Error('No response body');
 
         const reader = res.body?.getReader();

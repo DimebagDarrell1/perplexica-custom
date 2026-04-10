@@ -67,7 +67,7 @@ class OllamaLLM extends BaseLLM<OllamaConfig> {
       } else if (msg.role === 'assistant') {
         return {
           role: 'assistant',
-          content: msg.content,
+          content: msg.content ?? '',
           tool_calls:
             msg.tool_calls?.map((tc, i) => ({
               function: {
@@ -236,7 +236,9 @@ class OllamaLLM extends BaseLLM<OllamaConfig> {
         ),
       ) as T;
     } catch (err) {
-      throw new Error(`Error parsing response from Ollama: ${err}`);
+      throw new Error(
+        `Error parsing response from Ollama: ${err}\nRaw response: ${response.message.content}`,
+      );
     }
   }
 
