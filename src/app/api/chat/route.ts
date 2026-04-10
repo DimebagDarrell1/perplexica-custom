@@ -94,6 +94,31 @@ const ensureChatExists = async (input: {
           };
         }),
       });
+      return;
+    }
+
+    const existingFiles = Array.isArray(exists.files) ? exists.files : [];
+    const existingFileIds = new Set(
+      existingFiles
+        .map((file: any) => file?.fileId)
+        .filter((fileId): fileId is string => !!fileId),
+    );
+
+    const newFiles = input.fileIds
+      .filter((fileId) => !existingFileIds.has(fileId))
+      .map((id) => ({
+        fileId: id,
+        name: UploadManager.getFile(id)?.name || 'Uploaded File',
+      }));
+
+    if (newFiles.length > 0) {
+      await db
+        .update(chats)
+        .set({
+          files: [...existingFiles, ...newFiles],
+        })
+        .where(eq(chats.id, input.id))
+        .execute();
     }
   } catch (err) {
     console.error('Failed to check/save chat:', err);
