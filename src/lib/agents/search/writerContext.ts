@@ -156,6 +156,39 @@ export const formatWriterContext = (
   return `<uploaded_files noteForAssistant="${uploadedFilesContext ? 'These are direct excerpts from files the user attached in this chat. Treat them as primary user-provided document context and use them when answering.' : 'No uploaded file excerpts were loaded.'}">\n${uploadedFilesContext}\n</uploaded_files>\n<search_results note="${hasUploadedFileContext ? 'These results include excerpts from user-uploaded files. If any result has source_type=&quot;uploaded_file&quot;, the user DID attach a file in this chat. Use those excerpts as document context and do not claim that no file was attached.' : 'These are the search results and assistant can cite these.'}">\n${searchContext}\n</search_results>\n<widgets_result noteForAssistant="Its output is already showed to the user, assistant can use this information to answer the query but do not CITE this as a souce">\n${widgetContext}\n</widgets_result>`;
 };
 
+export const buildWriterUserMessage = (
+  followUp: string,
+  fileIds: string[] = [],
+): string => {
+  if (fileIds.length === 0) {
+    return followUp;
+  }
+
+  try {
+    const fileData = UploadStore.getFileData(fileIds);
+    const uploadedFilesContext = fileData
+      .map(
+        (file, index) =>
+          `<file index="${index + 1}" name="${escapeXml(file.fileName)}">${escapeXml(file.initialContent)}</file>`,
+      )
+      .join('\n');
+
+    return `<attached_files_present>true</attached_files_present>
+<attached_files note="These files were attached by the user in this chat. Use them directly when answering and do not claim that no file was attached.">
+${uploadedFilesContext}
+</attached_files>
+<user_question>
+${escapeXml(followUp)}
+</user_question>`;
+  } catch (error) {
+    console.error(
+      '[buildWriterUserMessage] Failed to load uploaded file excerpts:',
+      error,
+    );
+    return followUp;
+  }
+};
+
 /**
  * Truncate chat history to the most recent messages, preventing unbounded
  * context growth in the writer LLM call.

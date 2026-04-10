@@ -8,6 +8,7 @@ import {
   prepareWriterContext,
   formatWriterContext,
   truncateChatHistory,
+  buildWriterUserMessage,
 } from './writerContext';
 
 class APISearchAgent {
@@ -91,7 +92,10 @@ class APISearchAgent {
           ...truncatedHistory,
           {
             role: 'user',
-            content: input.followUp,
+            content: buildWriterUserMessage(
+              input.followUp,
+              input.config.fileIds,
+            ),
           },
         ],
       });

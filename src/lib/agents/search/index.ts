@@ -8,6 +8,7 @@ import {
   prepareWriterContext,
   formatWriterContext,
   truncateChatHistory,
+  buildWriterUserMessage,
 } from './writerContext';
 import db from '@/lib/db';
 import { messages } from '@/lib/db/schema';
@@ -147,7 +148,10 @@ class SearchAgent {
           ...truncatedHistory,
           {
             role: 'user',
-            content: input.followUp,
+            content: buildWriterUserMessage(
+              input.followUp,
+              input.config.fileIds,
+            ),
           },
         ],
       });
