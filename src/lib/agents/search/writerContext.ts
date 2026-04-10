@@ -111,18 +111,28 @@ export const formatWriterContext = (
   filteredChunks: Chunk[],
   widgetOutputs: { llmContext: string }[],
 ): string => {
+  const hasUploadedFileContext = filteredChunks.some((chunk) =>
+    String(chunk.metadata.url || '').startsWith('file_id://'),
+  );
+
   const searchContext = filteredChunks
-    .map(
-      (f, index) =>
-        `<result index="${index + 1}" title="${escapeXml(f.metadata.title)}">${escapeXml(f.content)}</result>`,
-    )
+    .map((f, index) => {
+      const isUploadedFile = String(f.metadata.url || '').startsWith(
+        'file_id://',
+      );
+      const sourceName = isUploadedFile
+        ? f.metadata.fileName || f.metadata.title || 'Uploaded File'
+        : f.metadata.url || f.metadata.title || 'Web Source';
+
+      return `<result index="${index + 1}" source_type="${isUploadedFile ? 'uploaded_file' : 'web'}" title="${escapeXml(f.metadata.title)}" source_name="${escapeXml(sourceName)}" url="${escapeXml(f.metadata.url || '')}">${escapeXml(f.content)}</result>`;
+    })
     .join('\n');
 
   const widgetContext = widgetOutputs
     .map((o) => `<result>${escapeXml(o.llmContext)}</result>`)
     .join('\n-------------\n');
 
-  return `<search_results note="These are the search results and assistant can cite these">\n${searchContext}\n</search_results>\n<widgets_result noteForAssistant="Its output is already showed to the user, assistant can use this information to answer the query but do not CITE this as a souce">\n${widgetContext}\n</widgets_result>`;
+  return `<search_results note="${hasUploadedFileContext ? 'These results include excerpts from user-uploaded files. If any result has source_type=&quot;uploaded_file&quot;, the user DID attach a file in this chat. Use those excerpts as document context and do not claim that no file was attached.' : 'These are the search results and assistant can cite these.'}">\n${searchContext}\n</search_results>\n<widgets_result noteForAssistant="Its output is already showed to the user, assistant can use this information to answer the query but do not CITE this as a souce">\n${widgetContext}\n</widgets_result>`;
 };
 
 /**
