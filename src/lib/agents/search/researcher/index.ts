@@ -51,10 +51,61 @@ class Researcher {
           <conversation>
           ${formatChatHistoryAsString(input.chatHistory.slice(-10))}
            User: ${input.followUp} (Standalone question: ${input.classification.standaloneFollowUp})
-           </conversation>
+          </conversation>
         `,
       },
     ];
+
+    if (input.config.fileIds.length > 0) {
+      const uploadQueries = Array.from(
+        new Set(
+          [
+            input.classification.standaloneFollowUp,
+            input.followUp,
+            `summary ${input.followUp}`,
+          ]
+            .map((query) => query?.trim())
+            .filter((query): query is string => !!query),
+        ),
+      ).slice(0, 3);
+
+      if (uploadQueries.length > 0) {
+        const uploadToolCall: ToolCall = {
+          id: crypto.randomUUID(),
+          name: 'uploads_search',
+          arguments: {
+            queries: uploadQueries,
+          },
+        };
+
+        agentMessageHistory.push({
+          role: 'assistant',
+          content: null,
+          tool_calls: [uploadToolCall],
+        });
+
+        const uploadAction = await ActionRegistry.execute(
+          uploadToolCall.name,
+          uploadToolCall.arguments,
+          {
+            llm: input.config.llm,
+            embedding: input.config.embedding,
+            session,
+            researchBlockId,
+            fileIds: input.config.fileIds,
+          },
+        );
+
+        actionOutput.push(uploadAction);
+
+        agentMessageHistory.push({
+          role: 'tool',
+          id: uploadToolCall.id,
+          name: uploadToolCall.name,
+          content: JSON.stringify(uploadAction),
+        });
+      }
+    }
 
     for (let i = 0; i < maxIteration; i++) {
       const researcherPrompt = getResearcherPrompt(

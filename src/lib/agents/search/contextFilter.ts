@@ -499,6 +499,51 @@ export const selectRelevantChunks = async (
   return selectedChunks;
 };
 
+const selectRelevantExistingChunks = async (
+  query: string,
+  standaloneFollowUp: string | undefined,
+  chunks: Chunk[],
+  embeddingModel: BaseEmbedding<any>,
+  topK: number,
+  signal?: AbortSignal,
+): Promise<Chunk[]> => {
+  if (chunks.length === 0) return [];
+  throwIfAborted(signal);
+
+  const queries = [query];
+  if (standaloneFollowUp && standaloneFollowUp !== query) {
+    queries.push(standaloneFollowUp);
+  }
+
+  const [queryEmbeddings, chunkEmbeddings] = await Promise.all([
+    embeddingModel.embedText(queries),
+    embeddingModel.embedText(chunks.map((chunk) => chunk.content)),
+  ]);
+  throwIfAborted(signal);
+
+  const k = 60;
+  const scoreMap = new Map<number, number>();
+
+  queryEmbeddings.forEach((queryEmbedding) => {
+    const similarities = chunks.map((_, idx) => ({
+      idx,
+      score: computeSimilarity(queryEmbedding, chunkEmbeddings[idx]),
+    }));
+
+    similarities.sort((a, b) => b.score - a.score);
+
+    similarities.forEach((item, rank) => {
+      const currentScore = scoreMap.get(item.idx) || 0;
+      scoreMap.set(item.idx, currentScore + 1 / (rank + 1 + k));
+    });
+  });
+
+  return Array.from(scoreMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topK)
+    .map(([idx]) => chunks[idx]);
+};
+
 // ---------------------------------------------------------------------------
 // Public pipeline entry point
 // ---------------------------------------------------------------------------
@@ -532,10 +577,42 @@ export const buildFilteredContext = async (
     `[ContextFilter] Starting pipeline with ${searchFindings.length} search findings`,
   );
 
+  const uploadedFileFindings = searchFindings.filter((finding) =>
+    String(finding.metadata.url || '').startsWith('file_id://'),
+  );
+  const webFindings = searchFindings.filter(
+    (finding) => !String(finding.metadata.url || '').startsWith('file_id://'),
+  );
+
+  let selectedUploadChunks: Chunk[] = [];
+  if (uploadedFileFindings.length > 0) {
+    const uploadChunkBudget = Math.min(
+      uploadedFileFindings.length,
+      Math.max(5, Math.floor(fullConfig.topKChunks / 3)),
+    );
+
+    selectedUploadChunks = await selectRelevantExistingChunks(
+      query,
+      standaloneFollowUp,
+      uploadedFileFindings,
+      embeddingModel,
+      uploadChunkBudget,
+      signal,
+    );
+
+    console.log(
+      `[ContextFilter] Preserved ${selectedUploadChunks.length} uploaded file chunks for writer`,
+    );
+  }
+
+  if (webFindings.length === 0) {
+    return selectedUploadChunks;
+  }
+
   // Stage 1: Rank results by relevance (also returns the query embedding)
   const { rankedResults, queryEmbedding } = await rankResultsByRelevance(
     query,
-    searchFindings,
+    webFindings,
     embeddingModel,
     fullConfig.topKUrls,
   );
@@ -573,5 +650,7 @@ export const buildFilteredContext = async (
     `[ContextFilter] Selected ${selectedChunks.length} relevant chunks for writer`,
   );
 
-  return selectedChunks;
+  const combinedChunks = [...selectedUploadChunks, ...selectedChunks];
+
+  return combinedChunks.slice(0, fullConfig.topKChunks);
 };
