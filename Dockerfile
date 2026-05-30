@@ -30,10 +30,12 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=builder /home/perplexica/public ./public
 COPY --from=builder /home/perplexica/.next/static ./public/_next/static
 COPY --from=builder /home/perplexica/.next/standalone ./
+COPY --from=builder /home/perplexica/node_modules/playwright ./node_modules/playwright
+COPY --from=builder /home/perplexica/node_modules/playwright-core ./node_modules/playwright-core
 COPY --from=builder /home/perplexica/data ./data
 COPY drizzle ./drizzle
 
-RUN npx playwright install --with-deps chromium-headless-shell
+RUN node ./node_modules/playwright/cli.js install --with-deps chromium-headless-shell
 RUN mkdir /home/perplexica/uploads
 
 RUN useradd --shell /bin/bash --system \
