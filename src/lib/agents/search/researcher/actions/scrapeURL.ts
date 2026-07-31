@@ -61,7 +61,9 @@ const scrapeURLAction: ResearchAction<typeof schema> = {
     await Promise.all(
       params.urls.map(async (url) => {
         try {
-          const scraped = await Scraper.scrape(url);
+          const scraped = await Scraper.scrape(url, {
+            preferFirecrawl: additionalConfig.mode !== 'speed',
+          });
 
           if (
             !readingEmitted &&
@@ -133,22 +135,21 @@ const scrapeURLAction: ResearchAction<typeof schema> = {
             try {
               await Promise.all(
                 chunks.map(async (chunk) => {
-                  const extracted =
-                    await additionalConfig.llm.generateObject<
-                      typeof extractorSchema
-                    >({
-                      messages: [
-                        {
-                          role: 'system',
-                          content: extractorPrompt,
-                        },
-                        {
-                          role: 'user',
-                          content: `<queries>Summarize</queries>\n<scraped_data>${chunk}</scraped_data>`,
-                        },
-                      ],
-                      schema: extractorSchema,
-                    });
+                  const extracted = await additionalConfig.llm.generateObject<
+                    typeof extractorSchema
+                  >({
+                    messages: [
+                      {
+                        role: 'system',
+                        content: extractorPrompt,
+                      },
+                      {
+                        role: 'user',
+                        content: `<queries>Summarize</queries>\n<scraped_data>${chunk}</scraped_data>`,
+                      },
+                    ],
+                    schema: extractorSchema,
+                  });
 
                   accumulatedContent += extracted.extracted_facts + '\n';
                 }),
@@ -167,8 +168,10 @@ const scrapeURLAction: ResearchAction<typeof schema> = {
           results.push({
             content: accumulatedContent,
             metadata: {
-              url,
+              url: scraped.url,
               title: scraped.title,
+              extractionProvider: scraped.provider,
+              extractionCached: scraped.cached === true,
             },
           });
         } catch (error) {

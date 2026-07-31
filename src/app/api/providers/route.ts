@@ -1,5 +1,7 @@
 import ModelRegistry from '@/lib/models/registry';
 import { NextRequest } from 'next/server';
+import configManager from '@/lib/config';
+import { redactModelProvider, requireAdminToken } from '@/lib/config/security';
 
 export const GET = async (req: Request) => {
   try {
@@ -34,6 +36,9 @@ export const GET = async (req: Request) => {
 
 export const POST = async (req: NextRequest) => {
   try {
+    const unauthorized = requireAdminToken(req);
+    if (unauthorized) return unauthorized;
+
     const body = await req.json();
     const { type, name, config } = body;
 
@@ -54,7 +59,10 @@ export const POST = async (req: NextRequest) => {
 
     return Response.json(
       {
-        provider: newProvider,
+        provider: redactModelProvider(
+          newProvider,
+          configManager.getUIConfigSections(),
+        ),
       },
       {
         status: 200,

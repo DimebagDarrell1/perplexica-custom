@@ -2,6 +2,10 @@ import z from 'zod';
 import { ResearchAction } from '../../types';
 import { Chunk, SearchResultsResearchBlock } from '@/lib/types';
 import { searchSearxng } from '@/lib/searxng';
+import {
+  dedupeSearchResults,
+  MODE_SEARCH_LIMITS,
+} from '@/lib/agents/search/resultUtils';
 
 const schema = z.object({
   queries: z.array(z.string()).describe('List of academic search queries'),
@@ -31,6 +35,8 @@ const academicSearchAction: ResearchAction<typeof schema> = {
     config.classification.classification.academicSearch === true,
   execute: async (input, additionalConfig) => {
     input.queries = (input.queries ?? []).slice(0, 3);
+    const maxResults =
+      MODE_SEARCH_LIMITS[additionalConfig.mode].maxResultsPerQuery;
 
     const researchBlock = additionalConfig.session.getBlock(
       additionalConfig.researchBlockId,
@@ -62,6 +68,7 @@ const academicSearchAction: ResearchAction<typeof schema> = {
       try {
         res = await searchSearxng(q, {
           engines: ['arxiv', 'google scholar', 'pubmed'],
+          maxResults,
         });
       } catch (error) {
         console.error(`Academic search failed for query "${q}":`, error);
@@ -70,13 +77,19 @@ const academicSearchAction: ResearchAction<typeof schema> = {
 
       if (!res.results || res.results.length === 0) return;
 
-      const resultChunks: Chunk[] = res.results.map((r) => ({
-        content: r.content || r.title,
-        metadata: {
-          title: r.title,
-          url: r.url,
-        },
-      }));
+      const resultChunks: Chunk[] = dedupeSearchResults(
+        res.results.map((r, rank) => ({
+          content: r.content || r.title,
+          metadata: {
+            title: r.title,
+            url: r.url,
+            searchQuery: q,
+            searchQueries: [q],
+            searchRank: rank + 1,
+            sourceType: 'academic',
+          },
+        })),
+      );
 
       results.push(...resultChunks);
 
@@ -129,7 +142,7 @@ const academicSearchAction: ResearchAction<typeof schema> = {
 
     return {
       type: 'search_results',
-      results,
+      results: dedupeSearchResults(results),
     };
   },
 };

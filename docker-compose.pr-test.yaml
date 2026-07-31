@@ -5,6 +5,16 @@ services:
     container_name: perplexica-pr-test
     restart: unless-stopped
     ports:
-      - "3002:3000"
+      - '3002:3000'
+    environment:
+      FIRECRAWL_ENABLED: ${FIRECRAWL_ENABLED:-false}
+      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      FIRECRAWL_TIMEOUT_MS: ${FIRECRAWL_TIMEOUT_MS:-20000}
+      FIRECRAWL_MAX_AGE_MS: ${FIRECRAWL_MAX_AGE_MS:-3600000}
+      FIRECRAWL_CACHE_TTL_MS: ${FIRECRAWL_CACHE_TTL_MS:-900000}
+      PERPLEXICA_ADMIN_TOKEN: ${PERPLEXICA_ADMIN_TOKEN:-}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     volumes:
       - /mnt/user/appdata/perplexica-pr-test/data:/home/perplexica/data

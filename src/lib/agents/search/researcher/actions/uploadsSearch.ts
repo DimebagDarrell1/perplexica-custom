@@ -1,6 +1,10 @@
 import z from 'zod';
 import { ResearchAction } from '../../types';
 import UploadStore from '@/lib/uploads/store';
+import {
+  dedupeEvidenceChunks,
+  MODE_SEARCH_LIMITS,
+} from '@/lib/agents/search/resultUtils';
 
 const schema = z.object({
   queries: z
@@ -54,27 +58,14 @@ const uploadsSearchAction: ResearchAction<typeof schema> = {
       fileIds: additionalConfig.fileIds,
     });
 
-    const results = await uploadStore.query(input.queries, 10);
-
-    const seenIds = new Map<string, number>();
-
-    const filteredSearchResults = results
-      .map((result, index) => {
-        if (result.metadata.url && !seenIds.has(result.metadata.url)) {
-          seenIds.set(result.metadata.url, index);
-          return result;
-        } else if (result.metadata.url && seenIds.has(result.metadata.url)) {
-          const existingIndex = seenIds.get(result.metadata.url)!;
-          const existingResult = results[existingIndex];
-
-          existingResult.content += `\n\n${result.content}`;
-
-          return undefined;
-        }
-
-        return result;
-      })
-      .filter((r) => r !== undefined);
+    const results = await uploadStore.query(
+      input.queries,
+      Math.max(
+        10,
+        MODE_SEARCH_LIMITS[additionalConfig.mode].maxResultsPerQuery,
+      ),
+    );
+    const filteredSearchResults = dedupeEvidenceChunks(results);
 
     if (researchBlock && researchBlock.type === 'research') {
       researchBlock.data.subSteps.push({

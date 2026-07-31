@@ -2,6 +2,11 @@ import configManager from '@/lib/config';
 import ModelRegistry from '@/lib/models/registry';
 import { NextRequest, NextResponse } from 'next/server';
 import { ConfigModelProvider } from '@/lib/config/types';
+import {
+  isKnownServerConfigKey,
+  redactConfigSecrets,
+  requireAdminToken,
+} from '@/lib/config/security';
 
 type SaveConfigBody = {
   key: string;
@@ -10,8 +15,14 @@ type SaveConfigBody = {
 
 export const GET = async (req: NextRequest) => {
   try {
-    const values = configManager.getCurrentConfig();
+    const unauthorized = requireAdminToken(req);
+    if (unauthorized) return unauthorized;
+
     const fields = configManager.getUIConfigSections();
+    const values = redactConfigSecrets(
+      configManager.getCurrentConfig(),
+      fields,
+    );
 
     const modelRegistry = new ModelRegistry();
     const modelProviders = await modelRegistry.getActiveProviders();
@@ -44,9 +55,12 @@ export const GET = async (req: NextRequest) => {
 
 export const POST = async (req: NextRequest) => {
   try {
+    const unauthorized = requireAdminToken(req);
+    if (unauthorized) return unauthorized;
+
     const body: SaveConfigBody = await req.json();
 
-    if (!body.key || !body.value) {
+    if (!body.key || body.value === undefined) {
       return Response.json(
         {
           message: 'Key and value are required.',
@@ -54,6 +68,15 @@ export const POST = async (req: NextRequest) => {
         {
           status: 400,
         },
+      );
+    }
+
+    if (
+      !isKnownServerConfigKey(body.key, configManager.getUIConfigSections())
+    ) {
+      return Response.json(
+        { message: 'Unknown or client-owned configuration key.' },
+        { status: 400 },
       );
     }
 

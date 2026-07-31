@@ -5,6 +5,7 @@ import SessionManager from '@/lib/session';
 import { Message, ReasoningResearchBlock } from '@/lib/types';
 import formatChatHistoryAsString from '@/lib/utils/formatHistory';
 import { ToolCall } from '@/lib/models/types';
+import { limitChunksForMode } from '../resultUtils';
 
 class Researcher {
   async research(
@@ -91,6 +92,7 @@ class Researcher {
             llm: input.config.llm,
             embedding: input.config.embedding,
             session,
+            mode: input.config.mode,
             researchBlockId,
             fileIds: input.config.fileIds,
           },
@@ -216,6 +218,7 @@ class Researcher {
         llm: input.config.llm,
         embedding: input.config.embedding,
         session: session,
+        mode: input.config.mode,
         researchBlockId: researchBlockId,
         fileIds: input.config.fileIds,
       });
@@ -236,26 +239,10 @@ class Researcher {
       .filter((a) => a.type === 'search_results')
       .flatMap((a) => a.results);
 
-    const seenUrls = new Map<string, number>();
-
-    const filteredSearchResults = searchResults
-      .map((result, index) => {
-        if (result.metadata.url && !seenUrls.has(result.metadata.url)) {
-          seenUrls.set(result.metadata.url, index);
-          return result;
-        } else if (result.metadata.url && seenUrls.has(result.metadata.url)) {
-          const existingIndex = seenUrls.get(result.metadata.url)!;
-
-          const existingResult = searchResults[existingIndex];
-
-          existingResult.content += `\n\n${result.content}`;
-
-          return undefined;
-        }
-
-        return result;
-      })
-      .filter((r) => r !== undefined);
+    const filteredSearchResults = limitChunksForMode(
+      searchResults,
+      input.config.mode,
+    );
 
     const sourceBlockId = crypto.randomUUID();
 

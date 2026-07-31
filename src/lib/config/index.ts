@@ -3,6 +3,7 @@ import fs from 'fs';
 import { Config, ConfigModelProvider, UIConfigSections } from './types';
 import { hashObj } from '../serverUtils';
 import { getModelProvidersUIConfigSection } from '../models/providers';
+import { preserveRedactedSecrets } from './security';
 
 class ConfigManager {
   configPath: string = path.join(
@@ -309,7 +310,7 @@ class ConfigManager {
     if (!provider) throw new Error('Provider not found');
 
     provider.name = name;
-    provider.config = config;
+    provider.config = preserveRedactedSecrets(provider.config, config);
 
     this.saveConfig();
 

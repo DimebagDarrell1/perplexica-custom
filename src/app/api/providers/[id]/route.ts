@@ -1,11 +1,16 @@
 import ModelRegistry from '@/lib/models/registry';
 import { NextRequest } from 'next/server';
+import configManager from '@/lib/config';
+import { redactModelProvider, requireAdminToken } from '@/lib/config/security';
 
 export const DELETE = async (
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) => {
   try {
+    const unauthorized = requireAdminToken(req);
+    if (unauthorized) return unauthorized;
+
     const { id } = await params;
 
     if (!id) {
@@ -48,6 +53,9 @@ export const PATCH = async (
   { params }: { params: Promise<{ id: string }> },
 ) => {
   try {
+    const unauthorized = requireAdminToken(req);
+    if (unauthorized) return unauthorized;
+
     const body = await req.json();
     const { name, config } = body;
     const { id } = await params;
@@ -69,7 +77,10 @@ export const PATCH = async (
 
     return Response.json(
       {
-        provider: updatedProvider,
+        provider: redactModelProvider(
+          updatedProvider,
+          configManager.getUIConfigSections(),
+        ),
       },
       {
         status: 200,

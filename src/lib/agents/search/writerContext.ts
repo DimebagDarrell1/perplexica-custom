@@ -3,6 +3,12 @@ import { Chunk } from '@/lib/types';
 import { buildFilteredContext, ContextFilterConfig } from './contextFilter';
 import type { SearchAgentConfig } from './types';
 import UploadStore from '@/lib/uploads/store';
+import {
+  dedupeEvidenceChunks,
+  dedupeSearchResults,
+  groupEvidenceBySource,
+  MODE_SEARCH_LIMITS,
+} from './resultUtils';
 
 /** Maximum number of chat history messages to include in the writer LLM call. */
 export const MAX_CHAT_HISTORY_MESSAGES = 20;
@@ -20,20 +26,44 @@ const escapeXml = (value: unknown): string =>
 
 const MODE_CONTEXT_FILTER_CONFIG: Record<
   SearchAgentConfig['mode'],
-  Pick<ContextFilterConfig, 'topKUrls' | 'topKChunks'>
+  Pick<
+    ContextFilterConfig,
+    'topKUrls' | 'topKChunks' | 'maxCandidateResults' | 'preferFirecrawl'
+  >
 > = {
   speed: {
     topKUrls: 5,
     topKChunks: 15,
+    maxCandidateResults: MODE_SEARCH_LIMITS.speed.maxCandidateResults,
+    preferFirecrawl: false,
   },
   balanced: {
     topKUrls: 10,
     topKChunks: 30,
+    maxCandidateResults: MODE_SEARCH_LIMITS.balanced.maxCandidateResults,
+    preferFirecrawl: true,
   },
   quality: {
     topKUrls: 20,
     topKChunks: 60,
+    maxCandidateResults: MODE_SEARCH_LIMITS.quality.maxCandidateResults,
+    preferFirecrawl: true,
   },
+};
+
+const prepareFallbackChunks = (chunks: Chunk[], limit: number): Chunk[] => {
+  const uploads = dedupeEvidenceChunks(
+    chunks.filter((chunk) =>
+      String(chunk.metadata.url || '').startsWith('file_id://'),
+    ),
+  );
+  const web = dedupeSearchResults(
+    chunks.filter(
+      (chunk) => !String(chunk.metadata.url || '').startsWith('file_id://'),
+    ),
+  );
+
+  return groupEvidenceBySource([...uploads, ...web].slice(0, limit));
 };
 
 /**
@@ -52,6 +82,7 @@ export const prepareWriterContext = async (
 ): Promise<Chunk[]> => {
   let filteredChunks = searchFindings || [];
   const contextFilterConfig = MODE_CONTEXT_FILTER_CONFIG[mode];
+  const fallbackLimit = MODE_SEARCH_LIMITS[mode].fallbackContextChunks;
 
   if (filteredChunks.length > 0) {
     const controller = new AbortController();
@@ -70,7 +101,7 @@ export const prepareWriterContext = async (
         new Promise<Chunk[]>((resolve) => {
           timeoutId = setTimeout(() => {
             controller.abort();
-            resolve(searchFindings || []);
+            resolve(prepareFallbackChunks(searchFindings || [], fallbackLimit));
           }, PIPELINE_TIMEOUT_MS);
         }),
       ]);
@@ -80,7 +111,10 @@ export const prepareWriterContext = async (
         '[prepareWriterContext] Context filter pipeline failed, falling back to raw snippets:',
         err,
       );
-      filteredChunks = searchFindings || [];
+      filteredChunks = prepareFallbackChunks(
+        searchFindings || [],
+        fallbackLimit,
+      );
     } finally {
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -97,11 +131,16 @@ export const prepareWriterContext = async (
       console.warn(
         '[prepareWriterContext] Pipeline returned 0 chunks, falling back to raw snippets',
       );
-      filteredChunks = searchFindings;
+      filteredChunks = prepareFallbackChunks(searchFindings, fallbackLimit);
     }
   }
 
-  return filteredChunks;
+  return groupEvidenceBySource(
+    dedupeEvidenceChunks(filteredChunks).slice(
+      0,
+      contextFilterConfig.topKChunks,
+    ),
+  );
 };
 
 /**

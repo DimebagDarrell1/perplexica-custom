@@ -34,7 +34,7 @@ const UpdateProvider = ({
     });
 
     setConfig(config);
-  }, [fields]);
+  }, [fields, modelProvider]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,7 +154,14 @@ const UpdateProvider = ({
                             placeholder={
                               (field as StringUIConfigField).placeholder
                             }
-                            type="text"
+                            type={
+                              field.type === 'password' ? 'password' : 'text'
+                            }
+                            autoComplete={
+                              field.type === 'password'
+                                ? 'new-password'
+                                : undefined
+                            }
                             required={field.required}
                           />
                         </div>

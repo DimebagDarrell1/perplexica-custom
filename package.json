@@ -8,6 +8,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
+    "test:research": "node --experimental-strip-types --test test/research/*.test.mjs",
     "format:write": "prettier . --write"
   },
   "dependencies": {

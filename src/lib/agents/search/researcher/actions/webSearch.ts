@@ -2,6 +2,10 @@ import z from 'zod';
 import { ResearchAction } from '../../types';
 import { searchSearxng } from '@/lib/searxng';
 import { Chunk, SearchResultsResearchBlock } from '@/lib/types';
+import {
+  dedupeSearchResults,
+  MODE_SEARCH_LIMITS,
+} from '@/lib/agents/search/resultUtils';
 
 const actionSchema = z.object({
   type: z.literal('web_search'),
@@ -86,6 +90,8 @@ const webSearchAction: ResearchAction<typeof actionSchema> = {
     config.classification.classification.skipSearch === false,
   execute: async (input, additionalConfig) => {
     input.queries = (input.queries ?? []).slice(0, 3);
+    const maxResults =
+      MODE_SEARCH_LIMITS[additionalConfig.mode].maxResultsPerQuery;
 
     const researchBlock = additionalConfig.session.getBlock(
       additionalConfig.researchBlockId,
@@ -115,7 +121,9 @@ const webSearchAction: ResearchAction<typeof actionSchema> = {
     const search = async (q: string) => {
       let res;
       try {
-        res = await searchSearxng(q);
+        res = await searchSearxng(q, {
+          maxResults,
+        });
       } catch (error) {
         console.error(`SearXNG search failed for query "${q}":`, error);
         return;
@@ -123,13 +131,19 @@ const webSearchAction: ResearchAction<typeof actionSchema> = {
 
       if (!res.results || res.results.length === 0) return;
 
-      const resultChunks: Chunk[] = res.results.map((r) => ({
-        content: r.content || r.title,
-        metadata: {
-          title: r.title,
-          url: r.url,
-        },
-      }));
+      const resultChunks: Chunk[] = dedupeSearchResults(
+        res.results.map((r, rank) => ({
+          content: r.content || r.title,
+          metadata: {
+            title: r.title,
+            url: r.url,
+            searchQuery: q,
+            searchQueries: [q],
+            searchRank: rank + 1,
+            sourceType: 'web',
+          },
+        })),
+      );
 
       results.push(...resultChunks);
 
@@ -182,7 +196,7 @@ const webSearchAction: ResearchAction<typeof actionSchema> = {
 
     return {
       type: 'search_results',
-      results,
+      results: dedupeSearchResults(results),
     };
   },
 };
