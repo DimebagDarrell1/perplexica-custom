@@ -14,7 +14,6 @@ jobs:
     timeout-minutes: 20
     env:
       NEXT_TELEMETRY_DISABLED: '1'
-      DATA_DIR: ${{ runner.temp }}/perplexica-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,6 +26,8 @@ jobs:
       - run: yarn install --frozen-lockfile
       - name: Prepare isolated test data
         run: |
+          DATA_DIR="$RUNNER_TEMP/perplexica-check"
+          printf 'DATA_DIR=%s\n' "$DATA_DIR" >> "$GITHUB_ENV"
           mkdir -p "$DATA_DIR/data"
           cp -R drizzle "$DATA_DIR/drizzle"
       - run: yarn qa
