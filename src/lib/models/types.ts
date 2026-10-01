@@ -51,6 +51,7 @@ type ToolCall = {
 };
 
 type GenerateTextInput = {
+  signal?: AbortSignal;
   messages: Message[];
   tools?: Tool[];
   options?: GenerateOptions;
@@ -70,6 +71,7 @@ type StreamTextOutput = {
 };
 
 type GenerateObjectInput = {
+  signal?: AbortSignal;
   schema: z.ZodTypeAny;
   messages: Message[];
   options?: GenerateOptions;

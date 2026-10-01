@@ -1,3 +1,4 @@
+import { fetchWithSignal } from '@/lib/utils/cancellation';
 import z from 'zod';
 import { Widget } from '../types';
 import formatChatHistoryAsString from '@/lib/utils/formatHistory';
@@ -55,6 +56,7 @@ const weatherWidget: Widget = {
   shouldExecute: (classification) =>
     classification.classification.showWeatherWidget,
   execute: async (input) => {
+    const request = input.signal ? fetchWithSignal(input.signal) : fetch;
     const output = await input.llm.generateObject<typeof schema>({
       messages: [
         {
@@ -88,7 +90,7 @@ const weatherWidget: Widget = {
       if (params.location !== '') {
         const openStreetMapUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(params.location)}&format=json&limit=1`;
 
-        const locationRes = await fetch(openStreetMapUrl, {
+        const locationRes = await request(openStreetMapUrl, {
           headers: {
             'User-Agent': 'Perplexica',
             'Content-Type': 'application/json',
@@ -105,7 +107,7 @@ const weatherWidget: Widget = {
           );
         }
 
-        const weatherRes = await fetch(
+        const weatherRes = await request(
           `https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,precipitation,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=auto&forecast_days=7`,
           {
             headers: {
@@ -139,7 +141,7 @@ const weatherWidget: Widget = {
         };
       } else if (params.lat !== undefined && params.lon !== undefined) {
         const [weatherRes, locationRes] = await Promise.all([
-          fetch(
+          request(
             `https://api.open-meteo.com/v1/forecast?latitude=${params.lat}&longitude=${params.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,precipitation,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=auto&forecast_days=7`,
             {
               headers: {
@@ -148,7 +150,7 @@ const weatherWidget: Widget = {
               },
             },
           ),
-          fetch(
+          request(
             `https://nominatim.openstreetmap.org/reverse?lat=${params.lat}&lon=${params.lon}&format=json`,
             {
               headers: {

@@ -70,15 +70,15 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
           content: msg.content,
           ...(msg.tool_calls &&
             msg.tool_calls.length > 0 && {
-            tool_calls: msg.tool_calls?.map((tc) => ({
-              id: tc.id,
-              type: 'function',
-              function: {
-                name: tc.name,
-                arguments: JSON.stringify(tc.arguments),
-              },
-            })),
-          }),
+              tool_calls: msg.tool_calls?.map((tc) => ({
+                id: tc.id,
+                type: 'function',
+                function: {
+                  name: tc.name,
+                  arguments: JSON.stringify(tc.arguments),
+                },
+              })),
+            }),
         } as ChatCompletionAssistantMessageParam;
       }
 
@@ -100,22 +100,27 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
       });
     });
 
-    const response = await this.openAIClient.chat.completions.create({
-      model: this.config.model,
-      tools: openaiTools.length > 0 ? openaiTools : undefined,
-      messages: this.convertToOpenAIMessages(input.messages),
-      temperature:
-        input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
-      top_p: input.options?.topP ?? this.config.options?.topP,
-      max_completion_tokens:
-        input.options?.maxTokens ?? this.config.options?.maxTokens,
-      stop: input.options?.stopSequences ?? this.config.options?.stopSequences,
-      frequency_penalty:
-        input.options?.frequencyPenalty ??
-        this.config.options?.frequencyPenalty,
-      presence_penalty:
-        input.options?.presencePenalty ?? this.config.options?.presencePenalty,
-    });
+    const response = await this.openAIClient.chat.completions.create(
+      {
+        model: this.config.model,
+        tools: openaiTools.length > 0 ? openaiTools : undefined,
+        messages: this.convertToOpenAIMessages(input.messages),
+        temperature:
+          input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
+        top_p: input.options?.topP ?? this.config.options?.topP,
+        max_completion_tokens:
+          input.options?.maxTokens ?? this.config.options?.maxTokens,
+        stop:
+          input.options?.stopSequences ?? this.config.options?.stopSequences,
+        frequency_penalty:
+          input.options?.frequencyPenalty ??
+          this.config.options?.frequencyPenalty,
+        presence_penalty:
+          input.options?.presencePenalty ??
+          this.config.options?.presencePenalty,
+      },
+      { signal: input.signal },
+    );
 
     if (response.choices && response.choices.length > 0) {
       return {
@@ -127,7 +132,7 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
                 return {
                   name: tc.function.name,
                   id: tc.id,
-                  arguments: JSON.parse(tc.function.arguments),
+                  arguments: JSON.parse(tc.function.arguments.trim() || '{}'),
                 };
               }
             })
@@ -157,23 +162,28 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
       });
     });
 
-    const stream = await this.openAIClient.chat.completions.create({
-      model: this.config.model,
-      messages: this.convertToOpenAIMessages(input.messages),
-      tools: openaiTools.length > 0 ? openaiTools : undefined,
-      temperature:
-        input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
-      top_p: input.options?.topP ?? this.config.options?.topP,
-      max_completion_tokens:
-        input.options?.maxTokens ?? this.config.options?.maxTokens,
-      stop: input.options?.stopSequences ?? this.config.options?.stopSequences,
-      frequency_penalty:
-        input.options?.frequencyPenalty ??
-        this.config.options?.frequencyPenalty,
-      presence_penalty:
-        input.options?.presencePenalty ?? this.config.options?.presencePenalty,
-      stream: true,
-    });
+    const stream = await this.openAIClient.chat.completions.create(
+      {
+        model: this.config.model,
+        messages: this.convertToOpenAIMessages(input.messages),
+        tools: openaiTools.length > 0 ? openaiTools : undefined,
+        temperature:
+          input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
+        top_p: input.options?.topP ?? this.config.options?.topP,
+        max_completion_tokens:
+          input.options?.maxTokens ?? this.config.options?.maxTokens,
+        stop:
+          input.options?.stopSequences ?? this.config.options?.stopSequences,
+        frequency_penalty:
+          input.options?.frequencyPenalty ??
+          this.config.options?.frequencyPenalty,
+        presence_penalty:
+          input.options?.presencePenalty ??
+          this.config.options?.presencePenalty,
+        stream: true,
+      },
+      { signal: input.signal },
+    );
 
     let recievedToolCalls: { name: string; id: string; arguments: string }[] =
       [];
@@ -191,14 +201,17 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
                   id: tc.id!,
                   arguments: tc.function?.arguments || '',
                 };
-                recievedToolCalls.push(call);
-                return { ...call, arguments: parse(call.arguments || '{}') };
+                recievedToolCalls[tc.index] = call;
+                return {
+                  ...call,
+                  arguments: parse(call.arguments.trim() || '{}'),
+                };
               } else {
                 const existingCall = recievedToolCalls[tc.index];
                 existingCall.arguments += tc.function?.arguments || '';
                 return {
                   ...existingCall,
-                  arguments: parse(existingCall.arguments || '{}'),
+                  arguments: parse(existingCall.arguments.trim() || '{}'),
                 };
               }
             }) || [],
@@ -212,22 +225,27 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
   }
 
   async generateObject<T>(input: GenerateObjectInput): Promise<T> {
-    const response = await this.openAIClient.chat.completions.parse({
-      messages: this.convertToOpenAIMessages(input.messages),
-      model: this.config.model,
-      temperature:
-        input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
-      top_p: input.options?.topP ?? this.config.options?.topP,
-      max_completion_tokens:
-        input.options?.maxTokens ?? this.config.options?.maxTokens,
-      stop: input.options?.stopSequences ?? this.config.options?.stopSequences,
-      frequency_penalty:
-        input.options?.frequencyPenalty ??
-        this.config.options?.frequencyPenalty,
-      presence_penalty:
-        input.options?.presencePenalty ?? this.config.options?.presencePenalty,
-      response_format: zodResponseFormat(input.schema, 'object'),
-    });
+    const response = await this.openAIClient.chat.completions.parse(
+      {
+        messages: this.convertToOpenAIMessages(input.messages),
+        model: this.config.model,
+        temperature:
+          input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
+        top_p: input.options?.topP ?? this.config.options?.topP,
+        max_completion_tokens:
+          input.options?.maxTokens ?? this.config.options?.maxTokens,
+        stop:
+          input.options?.stopSequences ?? this.config.options?.stopSequences,
+        frequency_penalty:
+          input.options?.frequencyPenalty ??
+          this.config.options?.frequencyPenalty,
+        presence_penalty:
+          input.options?.presencePenalty ??
+          this.config.options?.presencePenalty,
+        response_format: zodResponseFormat(input.schema, 'object'),
+      },
+      { signal: input.signal },
+    );
 
     if (response.choices && response.choices.length > 0) {
       const rawContent = response.choices[0].message.content || '';
@@ -252,24 +270,29 @@ class OpenAILLM extends BaseLLM<OpenAIConfig> {
   async *streamObject<T>(input: GenerateObjectInput): AsyncGenerator<T> {
     let recievedObj: string = '';
 
-    const stream = this.openAIClient.responses.stream({
-      model: this.config.model,
-      input: input.messages as any,
-      temperature:
-        input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
-      top_p: input.options?.topP ?? this.config.options?.topP,
-      max_completion_tokens:
-        input.options?.maxTokens ?? this.config.options?.maxTokens,
-      stop: input.options?.stopSequences ?? this.config.options?.stopSequences,
-      frequency_penalty:
-        input.options?.frequencyPenalty ??
-        this.config.options?.frequencyPenalty,
-      presence_penalty:
-        input.options?.presencePenalty ?? this.config.options?.presencePenalty,
-      text: {
-        format: zodTextFormat(input.schema, 'object'),
+    const stream = this.openAIClient.responses.stream(
+      {
+        model: this.config.model,
+        input: input.messages as any,
+        temperature:
+          input.options?.temperature ?? this.config.options?.temperature ?? 1.0,
+        top_p: input.options?.topP ?? this.config.options?.topP,
+        max_completion_tokens:
+          input.options?.maxTokens ?? this.config.options?.maxTokens,
+        stop:
+          input.options?.stopSequences ?? this.config.options?.stopSequences,
+        frequency_penalty:
+          input.options?.frequencyPenalty ??
+          this.config.options?.frequencyPenalty,
+        presence_penalty:
+          input.options?.presencePenalty ??
+          this.config.options?.presencePenalty,
+        text: {
+          format: zodTextFormat(input.schema, 'object'),
+        },
       },
-    });
+      { signal: input.signal },
+    );
 
     for await (const chunk of stream) {
       if (chunk.type === 'response.output_text.delta' && chunk.delta) {

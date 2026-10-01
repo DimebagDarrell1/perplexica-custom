@@ -153,7 +153,7 @@ The response from the API includes both the final message and the sources used t
 
 #### Streaming Response (stream: true)
 
-When streaming is enabled, the API returns a stream of newline-delimited JSON objects using Server-Sent Events (SSE). Each line contains a complete, valid JSON object. The response has `Content-Type: text/event-stream`.
+When streaming is enabled, the API returns newline-delimited JSON with `Content-Type: application/x-ndjson`. Each line contains a complete JSON object. Read the response body with a streaming UTF-8 decoder and buffer incomplete lines between chunks.
 
 Example of streamed response objects:
 
@@ -172,6 +172,8 @@ Clients should process each line as a separate JSON object. The different messag
 - **`sources`**: All sources used for the response
 - **`response`**: Chunks of the generated answer text
 - **`done`**: Indicates the stream is complete
+
+Cancelling the request or closing its response reader stops the search and releases its subscription. This API does not reconnect interrupted jobs. Browser chat uses a separate session API that supports reconnecting while its in-memory session exists.
 
 ### Fields in the Response
 

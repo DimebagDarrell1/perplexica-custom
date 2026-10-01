@@ -19,7 +19,7 @@ export interface Message extends BaseMessage {
   backendId: string;
   query: string;
   responseBlocks: Block[];
-  status: 'answering' | 'completed' | 'error';
+  status: 'answering' | 'completed' | 'error' | 'cancelled';
 }
 
 export interface File {

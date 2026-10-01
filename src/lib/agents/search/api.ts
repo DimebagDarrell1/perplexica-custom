@@ -1,3 +1,5 @@
+import { abortable } from '@/lib/utils/cancellation';
+import { CancellableLLM, CancellableEmbedding } from '@/lib/models/cancellable';
 import { ResearcherOutput, SearchAgentInput } from './types';
 import SessionManager from '@/lib/session';
 import { classify } from './classifier';
@@ -13,6 +15,17 @@ import {
 
 class APISearchAgent {
   async searchAsync(session: SessionManager, input: SearchAgentInput) {
+    input = {
+      ...input,
+      config: {
+        ...input.config,
+        llm: new CancellableLLM(input.config.llm, session.signal),
+        embedding: new CancellableEmbedding(
+          input.config.embedding,
+          session.signal,
+        ),
+      },
+    };
     try {
       const classification = await classify({
         chatHistory: input.chatHistory,
@@ -21,12 +34,17 @@ class APISearchAgent {
         llm: input.config.llm,
       });
 
-      const widgetPromise = WidgetExecutor.executeAll({
-        classification,
-        chatHistory: input.chatHistory,
-        followUp: input.followUp,
-        llm: input.config.llm,
-      }).catch((err) => {
+      const widgetPromise = abortable(
+        () =>
+          WidgetExecutor.executeAll({
+            classification,
+            chatHistory: input.chatHistory,
+            followUp: input.followUp,
+            llm: input.config.llm,
+            signal: session.signal,
+          }),
+        session.signal,
+      ).catch((err) => {
         console.error(`Error executing widgets: ${err}`);
         return [];
       });
@@ -35,7 +53,7 @@ class APISearchAgent {
 
       if (!classification.classification.skipSearch) {
         const researcher = new Researcher();
-        searchPromise = researcher.research(SessionManager.createSession(), {
+        searchPromise = researcher.research(session, {
           chatHistory: input.chatHistory,
           followUp: input.followUp,
           classification: classification,
@@ -56,6 +74,8 @@ class APISearchAgent {
         classification.standaloneFollowUp,
         input.config.embedding,
         input.config.mode,
+        session.signal,
+        input.config.fileIds.length > 0,
       );
 
       if (searchResults) {
@@ -107,13 +127,16 @@ class APISearchAgent {
         });
       }
 
+      session.signal.throwIfAborted();
       session.emit('end', {});
     } catch (err) {
       console.error('API search agent error:', err);
 
       session.emit('error', {
         data:
-          err instanceof Error ? err.message : 'An error occurred during search',
+          err instanceof Error
+            ? err.message
+            : 'An error occurred during search',
       });
     }
   }

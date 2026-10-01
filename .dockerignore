@@ -1,1 +1,17 @@
 **/node_modules
+.git
+.next
+out
+dist
+coverage
+output
+.playwright-cli
+.env
+.env.*
+!.env.example
+config.toml
+data
+uploads
+*.log
+*.tsbuildinfo
+.DS_Store

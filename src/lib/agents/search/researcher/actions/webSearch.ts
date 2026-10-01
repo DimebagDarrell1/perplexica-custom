@@ -8,7 +8,6 @@ import {
 } from '@/lib/agents/search/resultUtils';
 
 const actionSchema = z.object({
-  type: z.literal('web_search'),
   queries: z
     .array(z.string())
     .describe('An array of search queries to perform web searches for.'),
@@ -23,7 +22,7 @@ Your queries shouldn't be sentences but rather keywords that are SEO friendly an
 
 For example, if the user is asking about the features of a new technology, you might use queries like "GPT-5.1 features", "GPT-5.1 release date", "GPT-5.1 improvements" rather than a broad query like "Tell me about GPT-5.1".
 
-You can search for 3 queries in one go, make sure to utilize all 3 queries to maximize the information you can gather. If a question is simple, then split your queries to cover different aspects or related topics to get a comprehensive understanding.
+Use one to three queries as needed. Use one focused query for a simple question; add queries only for distinct missing information.
 If this tool is present and no other tools are more relevant, you MUST use this tool to get the needed information.
 `;
 
@@ -43,7 +42,7 @@ For example if the user is asking about Tesla, your actions should be like:
 5. __reasoning_preamble "I have gathered enough information to provide a comprehensive answer."
 6. done.
 
-You can search for 3 queries in one go, make sure to utilize all 3 queries to maximize the information you can gather. If a question is simple, then split your queries to cover different aspects or related topics to get a comprehensive understanding.
+Use one to three queries as needed. Use one focused query for a simple question; add queries only for distinct missing information.
 If this tool is present and no other tools are more relevant, you MUST use this tool to get the needed information. You can call this tools, multiple times as needed.
 `;
 
@@ -52,11 +51,11 @@ Use this tool to perform web searches based on the provided queries. This is use
 
 You have to call this tool several times to gather enough information unless the question is very simple (like greeting questions or basic facts).
 Start initially with broader queries to get an overview, then narrow down with more specific queries based on the results you receive.
-Never stop before at least 5-6 iterations of searches unless the user question is very simple.
+Stop when the evidence answers the question or further searches repeat what you already found.
 
 Your queries shouldn't be sentences but rather keywords that are SEO friendly and can be used to search the web for information.
 
-You can search for 3 queries in one go, make sure to utilize all 3 queries to maximize the information you can gather. If a question is simple, then split your queries to cover different aspects or related topics to get a comprehensive understanding.
+Use one to three queries as needed. Use one focused query for a simple question; add queries only for distinct missing information.
 If this tool is present and no other tools are more relevant, you MUST use this tool to get the needed information. You can call this tools, multiple times as needed.
 `;
 
@@ -122,13 +121,16 @@ const webSearchAction: ResearchAction<typeof actionSchema> = {
       let res;
       try {
         res = await searchSearxng(q, {
+          signal: additionalConfig.session.signal,
           maxResults,
         });
       } catch (error) {
+        additionalConfig.session.signal.throwIfAborted();
         console.error(`SearXNG search failed for query "${q}":`, error);
         return;
       }
 
+      additionalConfig.session.signal.throwIfAborted();
       if (!res.results || res.results.length === 0) return;
 
       const resultChunks: Chunk[] = dedupeSearchResults(

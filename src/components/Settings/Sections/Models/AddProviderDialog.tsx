@@ -27,7 +27,14 @@ const AddProvider = ({
   const [selectedProvider, setSelectedProvider] = useState<null | string>(
     modelProviders[0]?.key || null,
   );
-  const [config, setConfig] = useState<Record<string, any>>({});
+  const [config, setConfig] = useState<Record<string, any>>(() =>
+    Object.fromEntries(
+      (modelProviders[0]?.fields || []).map((field) => [
+        field.key,
+        field.default ?? '',
+      ]),
+    ),
+  );
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -44,19 +51,21 @@ const AddProvider = ({
     return map;
   }, [modelProviders]);
 
-  const selectedProviderFields = useMemo(() => {
-    if (!selectedProvider) return [];
-    const providerFields = providerConfigMap[selectedProvider]?.fields || [];
-    const config: Record<string, any> = {};
+  const selectedProviderFields = selectedProvider
+    ? providerConfigMap[selectedProvider]?.fields || []
+    : [];
 
-    providerFields.forEach((field) => {
-      config[field.key] = field.default || '';
-    });
-
-    setConfig(config);
-
-    return providerFields;
-  }, [selectedProvider, providerConfigMap]);
+  const selectProvider = (key: string) => {
+    setSelectedProvider(key);
+    setConfig(
+      Object.fromEntries(
+        (providerConfigMap[key]?.fields || []).map((field) => [
+          field.key,
+          field.default ?? '',
+        ]),
+      ),
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,7 +141,7 @@ const AddProvider = ({
                         </label>
                         <Select
                           value={selectedProvider ?? ''}
-                          onChange={(e) => setSelectedProvider(e.target.value)}
+                          onChange={(e) => selectProvider(e.target.value)}
                           options={Object.entries(providerConfigMap).map(
                             ([key, val]) => {
                               return {

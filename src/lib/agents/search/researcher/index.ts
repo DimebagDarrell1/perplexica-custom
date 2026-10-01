@@ -204,9 +204,8 @@ class Researcher {
         break;
       }
 
-      if (finalToolCalls[finalToolCalls.length - 1].name === 'done') {
-        break;
-      }
+      const finished = finalToolCalls.some((call) => call.name === 'done');
+      session.signal.throwIfAborted();
 
       agentMessageHistory.push({
         role: 'assistant',
@@ -223,7 +222,9 @@ class Researcher {
         fileIds: input.config.fileIds,
       });
 
+      session.signal.throwIfAborted();
       actionOutput.push(...actionResults);
+      if (finished) break;
 
       actionResults.forEach((action, i) => {
         agentMessageHistory.push({

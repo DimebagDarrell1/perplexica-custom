@@ -1,3 +1,4 @@
+import { sessionResponse } from '@/lib/sessionResponse';
 import { z } from 'zod';
 import ModelRegistry from '@/lib/models/registry';
 import { ModelWithProvider } from '@/lib/models/types';
@@ -177,62 +178,13 @@ export const POST = async (req: Request) => {
     const agent = new SearchAgent();
     const session = SessionManager.createSession();
 
-    const responseStream = new TransformStream();
-    const writer = responseStream.writable.getWriter();
-    const encoder = new TextEncoder();
+    const response = sessionResponse(session, req.signal);
 
-    const disconnect = session.subscribe((event: string, data: any) => {
-      if (event === 'data') {
-        if (data.type === 'block') {
-          writer.write(
-            encoder.encode(
-              JSON.stringify({
-                type: 'block',
-                block: data.block,
-              }) + '\n',
-            ),
-          );
-        } else if (data.type === 'updateBlock') {
-          writer.write(
-            encoder.encode(
-              JSON.stringify({
-                type: 'updateBlock',
-                blockId: data.blockId,
-                patch: data.patch,
-              }) + '\n',
-            ),
-          );
-        } else if (data.type === 'researchComplete') {
-          writer.write(
-            encoder.encode(
-              JSON.stringify({
-                type: 'researchComplete',
-              }) + '\n',
-            ),
-          );
-        }
-      } else if (event === 'end') {
-        writer.write(
-          encoder.encode(
-            JSON.stringify({
-              type: 'messageEnd',
-            }) + '\n',
-          ),
-        );
-        writer.close();
-        session.removeAllListeners();
-      } else if (event === 'error') {
-        writer.write(
-          encoder.encode(
-            JSON.stringify({
-              type: 'error',
-              data: data.data,
-            }) + '\n',
-          ),
-        );
-        writer.close();
-        session.removeAllListeners();
-      }
+    await ensureChatExists({
+      id: body.message.chatId,
+      sources: body.sources as SearchSources[],
+      fileIds: body.files,
+      query: body.message.content,
     });
 
     agent.searchAsync(session, {
@@ -250,25 +202,7 @@ export const POST = async (req: Request) => {
       },
     });
 
-    ensureChatExists({
-      id: body.message.chatId,
-      sources: body.sources as SearchSources[],
-      fileIds: body.files,
-      query: body.message.content,
-    });
-
-    req.signal.addEventListener('abort', () => {
-      disconnect();
-      writer.close();
-    });
-
-    return new Response(responseStream.readable, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        Connection: 'keep-alive',
-        'Cache-Control': 'no-cache, no-transform',
-      },
-    });
+    return response;
   } catch (err) {
     console.error('An error occurred while processing chat request:', err);
     return Response.json(

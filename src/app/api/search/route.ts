@@ -67,135 +67,100 @@ export const POST = async (req: Request) => {
     });
 
     if (!body.stream) {
-      return new Promise(
-        (
-          resolve: (value: Response) => void,
-          reject: (value: Response) => void,
-        ) => {
-          let message = '';
-          let sources: any[] = [];
-
-          session.subscribe((event: string, data: Record<string, any>) => {
-            if (event === 'data') {
-              try {
-                if (data.type === 'response') {
-                  message += data.data;
-                } else if (data.type === 'searchResults') {
-                  sources = data.data;
-                }
-              } catch (error) {
-                reject(
-                  Response.json(
-                    { message: 'Error parsing data' },
-                    { status: 500 },
-                  ),
-                );
-              }
-            }
-
-            if (event === 'end') {
-              resolve(Response.json({ message, sources }, { status: 200 }));
-            }
-
-            if (event === 'error') {
-              reject(
-                Response.json(
-                  { message: 'Search error', error: data },
-                  { status: 500 },
-                ),
-              );
-            }
-          });
-        },
-      );
+      return await new Promise<Response>((resolve) => {
+        let message = '';
+        let sources: any[] = [];
+        let finished = false;
+        let unsubscribe = () => {};
+        const finish = (response: Response) => {
+          if (finished) return;
+          finished = true;
+          unsubscribe();
+          req.signal.removeEventListener('abort', abort);
+          resolve(response);
+        };
+        const abort = () => {
+          session.cancel();
+          finish(
+            Response.json({ message: 'Request cancelled' }, { status: 499 }),
+          );
+        };
+        unsubscribe = session.subscribe((event, data) => {
+          if (finished) return;
+          if (event === 'data') {
+            if (data.type === 'response') message += data.data;
+            else if (data.type === 'searchResults') sources = data.data;
+          } else if (event === 'end') {
+            finish(Response.json({ message, sources }));
+          } else if (event === 'error') {
+            finish(
+              Response.json(
+                { message: 'Search error', error: data },
+                { status: 500 },
+              ),
+            );
+          }
+        });
+        if (finished) unsubscribe();
+        else if (req.signal.aborted) abort();
+        else req.signal.addEventListener('abort', abort, { once: true });
+      });
     }
 
     const encoder = new TextEncoder();
-
-    const abortController = new AbortController();
-    const { signal } = abortController;
-
-    const stream = new ReadableStream({
+    let closed = false;
+    let unsubscribe = () => {};
+    let abort = () => {};
+    const cleanup = () => {
+      unsubscribe();
+      req.signal.removeEventListener('abort', abort);
+    };
+    const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        let sources: any[] = [];
-
-        controller.enqueue(
-          encoder.encode(
-            JSON.stringify({
-              type: 'init',
-              data: 'Stream connected',
-            }) + '\n',
-          ),
-        );
-
-        signal.addEventListener('abort', () => {
-          session.removeAllListeners();
-
-          try {
-            controller.close();
-          } catch (error) {}
-        });
-
-        session.subscribe((event: string, data: Record<string, any>) => {
+        const send = (data: unknown) =>
+          controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
+        const close = () => {
+          if (closed) return;
+          closed = true;
+          cleanup();
+          controller.close();
+        };
+        abort = () => {
+          session.cancel();
+          close();
+        };
+        send({ type: 'init', data: 'Stream connected' });
+        unsubscribe = session.subscribe((event, data) => {
+          if (closed) return;
           if (event === 'data') {
-            if (signal.aborted) return;
-
-            try {
-              if (data.type === 'response') {
-                controller.enqueue(
-                  encoder.encode(
-                    JSON.stringify({
-                      type: 'response',
-                      data: data.data,
-                    }) + '\n',
-                  ),
-                );
-              } else if (data.type === 'searchResults') {
-                sources = data.data;
-                controller.enqueue(
-                  encoder.encode(
-                    JSON.stringify({
-                      type: 'sources',
-                      data: sources,
-                    }) + '\n',
-                  ),
-                );
-              }
-            } catch (error) {
-              controller.error(error);
-            }
-          }
-
-          if (event === 'end') {
-            if (signal.aborted) return;
-
-            controller.enqueue(
-              encoder.encode(
-                JSON.stringify({
-                  type: 'done',
-                }) + '\n',
-              ),
-            );
-            controller.close();
-          }
-
-          if (event === 'error') {
-            if (signal.aborted) return;
-
+            if (data.type === 'response')
+              send({ type: 'response', data: data.data });
+            else if (data.type === 'searchResults')
+              send({ type: 'sources', data: data.data });
+          } else if (event === 'end') {
+            send({ type: 'done' });
+            close();
+          } else if (event === 'error') {
+            closed = true;
+            cleanup();
             controller.error(data);
           }
         });
+        if (closed) cleanup();
+        else if (req.signal.aborted) abort();
+        else req.signal.addEventListener('abort', abort, { once: true });
       },
       cancel() {
-        abortController.abort();
+        closed = true;
+        cleanup();
+        session.cancel();
       },
     });
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
+        'Content-Type': 'application/x-ndjson',
         'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
       },
     });
   } catch (err: any) {

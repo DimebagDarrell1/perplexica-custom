@@ -48,13 +48,17 @@ The test instance remains on port `3002` and keeps its own data volume at
 - Firecrawl requests ask for main-content Markdown, PDF parsing, ad blocking,
   base64 image removal, and a configurable Firecrawl cache age.
 - Successful Firecrawl responses are cached in the Perplexica process for 15
-  minutes by default. The cache is bounded to 100 URLs.
+  minutes by default. The cache is bounded to 100 URLs, with at most 50,000 content characters per URL.
+- Firecrawl JSON responses are capped at 2,000,000 bytes while reading. The
+  configured request timeout is capped at 60 seconds. Redirects are rejected,
+  and cancellation is checked before using cached content. Oversized or invalid
+  responses use the native extraction fallback.
 - A Firecrawl timeout or error does not fail the research request. It creates a
   structured fallback log and continues with native extraction.
 
-This improves results primarily on JavaScript-heavy pages, cluttered articles,
-PDFs, and sites where the lightweight fetch extractor returns little useful
-content. It does not replace SearXNG and does not let the research LLM decide
+Firecrawl can supply more useful text from JavaScript-heavy pages, cluttered
+articles, PDFs, and pages where the lightweight extractor returns little content.
+The benefit depends on the target site and the Firecrawl deployment. It does not replace SearXNG and does not let the research LLM decide
 when to call Firecrawl.
 
 ## Verify The Services
@@ -69,6 +73,12 @@ The endpoint reports:
 - `degraded`: SearXNG works but enabled Firecrawl is unavailable; native
   extraction is still active.
 - `unhealthy`: SearXNG is unavailable, so search discovery cannot proceed.
+
+SearXNG must return valid search JSON with a `results` array. Firecrawl must
+return successful liveness JSON from `/v0/health/liveness`. Login pages,
+redirects, HTTP errors, and malformed responses fail these checks. Firecrawl
+liveness confirms that its API responds; it does not verify a successful scrape
+or the health of every worker. Test an actual extraction before deploying.
 
 Pipeline metrics are written as one JSON log entry per completed context build:
 
@@ -119,3 +129,12 @@ The tradeoffs are additional balanced/quality latency, Firecrawl CPU and memory
 use, more embedding work when deeper evidence is available, and a larger writer
 context. Speed mode is unchanged by Firecrawl, and all deep-reading failures
 retain the raw-snippet fallback.
+
+## Optional Jev reranking
+
+Balanced and quality modes can optionally rerank discovered snippets before page
+extraction. It is disabled by default, skips chats with attached files, and falls
+back to embedding ranking on failure. See [Jev setup and evaluation](JEV.md) for
+provider settings, data sent to the provider, limits, and the offline evaluation
+command. The research health endpoint reports Jev configuration without making
+a paid inference request.

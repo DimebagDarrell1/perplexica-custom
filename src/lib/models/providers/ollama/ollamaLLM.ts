@@ -1,3 +1,4 @@
+import { fetchWithSignal } from '@/lib/utils/cancellation';
 import z from 'zod';
 import BaseLLM from '../../base/llm';
 import {
@@ -83,6 +84,15 @@ class OllamaLLM extends BaseLLM<OllamaConfig> {
     });
   }
 
+  private client(signal?: AbortSignal): Ollama {
+    return signal
+      ? new Ollama({
+          host: this.config.baseURL || 'http://localhost:11434',
+          fetch: fetchWithSignal(signal),
+        })
+      : this.ollamaClient;
+  }
+
   async generateText(input: GenerateTextInput): Promise<GenerateTextOutput> {
     const ollamaTools: OllamaTool[] = [];
 
@@ -97,7 +107,7 @@ class OllamaLLM extends BaseLLM<OllamaConfig> {
       });
     });
 
-    const res = await this.ollamaClient.chat({
+    const res = await this.client(input.signal).chat({
       model: this.config.model,
       messages: this.convertToOllamaMessages(input.messages),
       tools: ollamaTools.length > 0 ? ollamaTools : undefined,
@@ -153,7 +163,7 @@ class OllamaLLM extends BaseLLM<OllamaConfig> {
       });
     });
 
-    const stream = await this.ollamaClient.chat({
+    const stream = await this.client(input.signal).chat({
       model: this.config.model,
       messages: this.convertToOllamaMessages(input.messages),
       stream: true,
@@ -203,7 +213,7 @@ class OllamaLLM extends BaseLLM<OllamaConfig> {
   }
 
   async generateObject<T>(input: GenerateObjectInput): Promise<T> {
-    const response = await this.ollamaClient.chat({
+    const response = await this.client(input.signal).chat({
       model: this.config.model,
       messages: this.convertToOllamaMessages(input.messages),
       format: z.toJSONSchema(input.schema),
@@ -245,7 +255,7 @@ class OllamaLLM extends BaseLLM<OllamaConfig> {
   async *streamObject<T>(input: GenerateObjectInput): AsyncGenerator<T> {
     let recievedObj: string = '';
 
-    const stream = await this.ollamaClient.chat({
+    const stream = await this.client(input.signal).chat({
       model: this.config.model,
       messages: this.convertToOllamaMessages(input.messages),
       format: z.toJSONSchema(input.schema),

@@ -24,6 +24,7 @@ export type SearchAgentInput = {
 };
 
 export type WidgetInput = {
+  signal?: AbortSignal;
   chatHistory: ChatTurnMessage[];
   followUp: string;
   classification: ClassifierOutput;
@@ -97,9 +98,7 @@ export type ReasoningResearchAction = {
 };
 
 export type ActionOutput =
-  | SearchActionOutput
-  | DoneActionOutput
-  | ReasoningResearchAction;
+  SearchActionOutput | DoneActionOutput | ReasoningResearchAction;
 
 export interface ResearchAction<
   TSchema extends z.ZodObject<any> = z.ZodObject<any>,

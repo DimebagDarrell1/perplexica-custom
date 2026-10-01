@@ -6,6 +6,7 @@ export const register = async () => {
       console.log('Database migrations completed successfully');
     } catch (error) {
       console.error('Failed to run database migrations:', error);
+      throw error;
     }
 
     await import('./lib/config/index');

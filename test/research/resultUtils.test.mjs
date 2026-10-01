@@ -79,3 +79,51 @@ test('mode limiting preserves several upload excerpts from the same file', () =>
     2,
   );
 });
+
+test('same-title sources cannot exchange content or citation URLs', () => {
+  const results = dedupeSearchResults([
+    {
+      ...chunk('https://a.example/A', 'short'),
+      metadata: { title: 'A shared page title', url: 'https://a.example/A' },
+    },
+    {
+      ...chunk('https://b.example/B', 'longer and different'),
+      metadata: { title: 'A shared page title', url: 'https://b.example/B' },
+    },
+  ]);
+  assert.deepEqual(
+    results.map((r) => [r.metadata.url, r.content]),
+    [
+      ['https://a.example/A', 'short'],
+      ['https://b.example/B', 'longer and different'],
+    ],
+  );
+});
+
+test('case-sensitive paths and query values remain distinct', () => {
+  assert.equal(
+    dedupeSearchResults([
+      chunk('https://example.com/A?key=X', 'one'),
+      chunk('https://example.com/a?key=X', 'two'),
+      chunk('https://example.com/A?key=x', 'three'),
+    ]).length,
+    3,
+  );
+  assert.equal(
+    dedupeSearchResults([
+      chunk('https://EXAMPLE.com/A?utm_source=x#one', 'one'),
+      chunk('https://example.com/A', 'longer'),
+    ]).length,
+    1,
+  );
+});
+
+test('evidence deduplication preserves case-sensitive facts', () => {
+  assert.equal(
+    dedupeEvidenceChunks([
+      chunk('file_id://report', 'constant A'),
+      chunk('file_id://report', 'constant a'),
+    ]).length,
+    2,
+  );
+});

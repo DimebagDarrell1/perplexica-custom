@@ -1,6 +1,6 @@
-FROM node:24.5.0-slim AS builder
+FROM node:24.21.0-bookworm-slim AS builder
 
-RUN apt-get update && apt-get install -y python3 python3-pip sqlite3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 python3-pip sqlite3 make g++ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /home/perplexica
 
@@ -15,7 +15,7 @@ COPY drizzle ./drizzle
 RUN mkdir -p /home/perplexica/data
 RUN yarn build
 
-FROM node:24.5.0-slim
+FROM node:24.21.0-bookworm-slim
 
 RUN apt-get update && apt-get install -y \
     python3-dev python3-babel python3-venv python-is-python3 \

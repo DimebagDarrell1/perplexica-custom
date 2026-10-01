@@ -67,14 +67,17 @@ const academicSearchAction: ResearchAction<typeof schema> = {
       let res;
       try {
         res = await searchSearxng(q, {
+          signal: additionalConfig.session.signal,
           engines: ['arxiv', 'google scholar', 'pubmed'],
           maxResults,
         });
       } catch (error) {
+        additionalConfig.session.signal.throwIfAborted();
         console.error(`Academic search failed for query "${q}":`, error);
         return;
       }
 
+      additionalConfig.session.signal.throwIfAborted();
       if (!res.results || res.results.length === 0) return;
 
       const resultChunks: Chunk[] = dedupeSearchResults(

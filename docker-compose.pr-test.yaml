@@ -1,12 +1,18 @@
 services:
   perplexica-pr-test:
     build:
-      context: https://github.com/DimebagDarrell1/perplexica-custom.git#codex/vane-integration-pass:Perplexica
+      context: https://github.com/DimebagDarrell1/perplexica-custom.git#codex/vane-integration-pass
     container_name: perplexica-pr-test
     restart: unless-stopped
     ports:
       - '3002:3000'
     environment:
+      JEV_ENABLED: ${JEV_ENABLED:-false}
+      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe}
+      JEV_API_KEY: ${JEV_API_KEY:-}
+      JEV_MODEL: ${JEV_MODEL:-}
+      JEV_MAX_CANDIDATES: ${JEV_MAX_CANDIDATES:-24}
+      JEV_TIMEOUT_MS: ${JEV_TIMEOUT_MS:-2000}
       FIRECRAWL_ENABLED: ${FIRECRAWL_ENABLED:-false}
       FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}

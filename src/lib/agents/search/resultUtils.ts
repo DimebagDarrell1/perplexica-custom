@@ -56,9 +56,9 @@ export const normalizeUrl = (value: unknown) => {
       url.pathname = url.pathname.replace(/\/+$/, '');
     }
 
-    return url.toString().toLowerCase();
+    return url.toString();
   } catch {
-    return normalizeText(value);
+    return String(value ?? '').trim();
   }
 };
 
@@ -77,12 +77,6 @@ const getSourceKey = (chunk: Chunk) => {
   const title = normalizeText(chunk.metadata.title);
   return title ? `title:${title}` : `source:${normalizeText(chunk.content)}`;
 };
-
-const getTitleKey = (chunk: Chunk) => normalizeText(chunk.metadata.title);
-
-const isUsefulTitleKey = (titleKey: string) =>
-  titleKey.length >= 12 &&
-  !['home', 'homepage', 'untitled', 'index', 'search'].includes(titleKey);
 
 export const trimChunkContent = (chunk: Chunk): Chunk => ({
   ...chunk,
@@ -111,29 +105,20 @@ const getSearchQueries = (chunk: Chunk): string[] => {
  */
 export const dedupeSearchResults = (chunks: Chunk[]): Chunk[] => {
   const byKey = new Map<string, Chunk>();
-  const titleToKey = new Map<string, string>();
 
   chunks.forEach((chunk) => {
     const trimmed = trimChunkContent(chunk);
     const key = getResultKey(trimmed);
-    const titleKey = getTitleKey(trimmed);
-    const existingKey = isUsefulTitleKey(titleKey)
-      ? titleToKey.get(titleKey)
-      : undefined;
-    const effectiveKey = existingKey || key;
-    const existing = byKey.get(effectiveKey);
+    const existing = byKey.get(key);
 
     if (!existing) {
-      byKey.set(effectiveKey, {
+      byKey.set(key, {
         ...trimmed,
         metadata: {
           ...trimmed.metadata,
           searchQueries: getSearchQueries(trimmed),
         },
       });
-      if (isUsefulTitleKey(titleKey)) {
-        titleToKey.set(titleKey, effectiveKey);
-      }
       return;
     }
 
@@ -161,7 +146,7 @@ export const dedupeEvidenceChunks = (chunks: Chunk[]): Chunk[] => {
   const seen = new Set<string>();
 
   return chunks.filter((chunk) => {
-    const key = `${getSourceKey(chunk)}:${normalizeText(chunk.content)}`;
+    const key = JSON.stringify([getSourceKey(chunk), chunk.content.trim()]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

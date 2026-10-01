@@ -3,10 +3,6 @@ import { Widget } from '../types';
 import YahooFinance from 'yahoo-finance2';
 import formatChatHistoryAsString from '@/lib/utils/formatHistory';
 
-const yf = new YahooFinance({
-  suppressNotices: ['yahooSurvey'],
-});
-
 const schema = z.object({
   name: z
     .string()
@@ -53,6 +49,10 @@ const stockWidget: Widget = {
   shouldExecute: (classification) =>
     classification.classification.showStockWidget,
   execute: async (input) => {
+    const yf = new YahooFinance({
+      suppressNotices: ['yahooSurvey'],
+      fetchOptions: { signal: input.signal },
+    });
     const output = await input.llm.generateObject<typeof schema>({
       messages: [
         {

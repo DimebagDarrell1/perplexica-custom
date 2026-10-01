@@ -29,6 +29,8 @@ logs/
 
 # Testing
 /coverage/
+/.playwright-cli/
+/output/playwright/
 
 # Miscellaneous
 .DS_Store

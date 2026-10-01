@@ -127,45 +127,36 @@ class ConfigManager {
   }
 
   private saveConfig() {
-    fs.writeFileSync(
-      this.configPath,
-      JSON.stringify(this.currentConfig, null, 2),
-    );
+    const temporaryPath = `${this.configPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+      fs.writeFileSync(
+        temporaryPath,
+        JSON.stringify(this.currentConfig, null, 2),
+        { mode: 0o600, flag: 'wx' },
+      );
+      fs.renameSync(temporaryPath, this.configPath);
+    } finally {
+      if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    }
   }
 
   private initializeConfig() {
-    const exists = fs.existsSync(this.configPath);
-    if (!exists) {
-      fs.writeFileSync(
-        this.configPath,
-        JSON.stringify(this.currentConfig, null, 2),
-      );
-    } else {
-      try {
-        this.currentConfig = JSON.parse(
-          fs.readFileSync(this.configPath, 'utf-8'),
-        );
-      } catch (err) {
-        if (err instanceof SyntaxError) {
-          console.error(
-            `Error parsing config file at ${this.configPath}:`,
-            err,
-          );
-          console.log(
-            'Loading default config and overwriting the existing file.',
-          );
-          fs.writeFileSync(
-            this.configPath,
-            JSON.stringify(this.currentConfig, null, 2),
-          );
-          return;
-        } else {
-          console.log('Unknown error reading config file:', err);
-        }
-      }
-
-      this.currentConfig = this.migrateConfig(this.currentConfig);
+    if (!fs.existsSync(this.configPath)) {
+      this.saveConfig();
+      return;
     }
+    try {
+      this.currentConfig = JSON.parse(
+        fs.readFileSync(this.configPath, 'utf-8'),
+      );
+    } catch (error) {
+      // Preserve the file so a damaged configuration can be recovered.
+      throw new Error(
+        `Could not read settings at ${this.configPath}. The existing file was preserved.`,
+        { cause: error },
+      );
+    }
+    this.currentConfig = this.migrateConfig(this.currentConfig);
   }
 
   private migrateConfig(config: Config): Config {

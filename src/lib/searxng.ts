@@ -1,6 +1,7 @@
 import { getSearxngURL } from './config/serverRegistry';
 
 interface SearxngSearchOptions {
+  signal?: AbortSignal;
   categories?: string[];
   engines?: string[];
   language?: string;
@@ -45,7 +46,7 @@ export const searchSearxng = async (
 
   if (opts) {
     Object.keys(opts).forEach((key) => {
-      if (key === 'engines' || key === 'maxResults') return; // already handled locally
+      if (key === 'engines' || key === 'maxResults' || key === 'signal') return; // already handled locally
       const value = opts[key as keyof SearxngSearchOptions];
       if (Array.isArray(value)) {
         url.searchParams.append(key, value.join(','));
@@ -60,7 +61,9 @@ export const searchSearxng = async (
 
   try {
     const res = await fetch(url, {
-      signal: controller.signal,
+      signal: opts?.signal
+        ? AbortSignal.any([controller.signal, opts.signal])
+        : controller.signal,
     });
 
     if (!res.ok) {
@@ -84,6 +87,7 @@ export const searchSearxng = async (
 
     return { results, suggestions };
   } catch (err: any) {
+    opts?.signal?.throwIfAborted();
     if (err.name === 'AbortError') {
       throw new Error('SearXNG search timed out');
     }
@@ -110,11 +114,15 @@ export const checkSearxngHealth = async (): Promise<{
       'search?format=json&q=perplexica-health',
       `${searxngURL}/`,
     );
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, {
+      signal: controller.signal,
+      redirect: 'error',
+    });
+    const payload = response.ok ? await response.json() : undefined;
 
     return {
       configured: true,
-      reachable: response.ok,
+      reachable: response.ok && Array.isArray(payload?.results),
       status: response.status,
     };
   } catch (error) {

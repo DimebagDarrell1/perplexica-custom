@@ -1,5 +1,5 @@
-import { Tool, ToolCall } from '@/lib/models/types';
-import {
+import type { Tool, ToolCall } from '@/lib/models/types';
+import type {
   ActionOutput,
   AdditionalConfig,
   ClassifierOutput,
@@ -75,7 +75,7 @@ class ActionRegistry {
       throw new Error(`Action with name ${name} not found`);
     }
 
-    return action.execute(params, additionalConfig);
+    return action.execute(action.schema.parse(params), additionalConfig);
   }
 
   static async executeAll(
@@ -85,20 +85,11 @@ class ActionRegistry {
       fileIds: string[];
     },
   ): Promise<ActionOutput[]> {
-    const results: ActionOutput[] = [];
-
-    await Promise.all(
-      actions.map(async (actionConfig) => {
-        const output = await this.execute(
-          actionConfig.name,
-          actionConfig.arguments,
-          additionalConfig,
-        );
-        results.push(output);
-      }),
+    return Promise.all(
+      actions.map((actionConfig) =>
+        this.execute(actionConfig.name, actionConfig.arguments, additionalConfig),
+      ),
     );
-
-    return results;
   }
 }
 

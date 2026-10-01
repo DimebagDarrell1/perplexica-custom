@@ -6,8 +6,6 @@ const unsafeHostnames = new Set([
   'localhost.localdomain',
   'metadata.google.internal',
 ]);
-const dnsSafetyCache = new Map<string, { safe: boolean; expiresAt: number }>();
-const DNS_SAFETY_CACHE_TTL_MS = 300_000;
 
 const isPrivateIpv4 = (address: string): boolean => {
   const parts = address.split('.').map(Number);
@@ -24,6 +22,7 @@ const isPrivateIpv4 = (address: string): boolean => {
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 0) ||
+    (a === 192 && b === 88 && c === 99) ||
     (a === 192 && b === 168) ||
     (a === 198 && b === 51 && c === 100) ||
     (a === 198 && (b === 18 || b === 19)) ||
@@ -33,26 +32,46 @@ const isPrivateIpv4 = (address: string): boolean => {
 };
 
 const isPrivateIpv6 = (address: string): boolean => {
-  const normalized = address.toLowerCase().split('%')[0];
-  const mappedIpv4 = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  const normalized = new URL(`http://[${address}]/`).hostname.slice(1, -1);
+  const [left, right] = normalized.split('::');
+  const prefix = left ? left.split(':') : [];
+  const suffix = right ? right.split(':') : [];
+  const groups = normalized.includes('::')
+    ? [
+        ...prefix,
+        ...Array(8 - prefix.length - suffix.length).fill('0'),
+        ...suffix,
+      ]
+    : prefix;
+  const words = groups.map((part) => parseInt(part, 16));
 
-  if (mappedIpv4) return isPrivateIpv4(mappedIpv4);
+  // URL parsing converts dotted IPv4 tails into hexadecimal IPv6 words.
+  if (words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff) {
+    return isPrivateIpv4(
+      [words[6] >> 8, words[6] & 255, words[7] >> 8, words[7] & 255].join('.'),
+    );
+  }
 
+  // Only global unicast, excluding special-purpose and transition ranges.
   return (
-    normalized === '::' ||
-    normalized === '::1' ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd') ||
-    /^fe[89ab]/.test(normalized) ||
-    normalized.startsWith('2001:db8') ||
-    normalized.startsWith('ff')
+    (words[0] & 0xe000) !== 0x2000 ||
+    (words[0] === 0x2001 && words[1] < 0x200) ||
+    (words[0] === 0x2001 && words[1] === 0xdb8) ||
+    words[0] === 0x2002 ||
+    (words[0] === 0x3fff && words[1] < 0x1000)
   );
 };
 
 export const isPrivateIpAddress = (address: string): boolean => {
   const version = isIP(address);
   if (version === 4) return isPrivateIpv4(address);
-  if (version === 6) return isPrivateIpv6(address);
+  if (version === 6) {
+    try {
+      return isPrivateIpv6(address);
+    } catch {
+      return true;
+    }
+  }
   return true;
 };
 
@@ -67,7 +86,10 @@ export const parsePublicHttpUrl = (value: string): URL => {
     throw new Error('URLs containing credentials are not allowed');
   }
 
-  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const hostname = url.hostname
+    .replace(/^\[|\]$/g, '')
+    .toLowerCase()
+    .replace(/\.$/, '');
   if (
     !hostname ||
     unsafeHostnames.has(hostname) ||
@@ -96,27 +118,21 @@ export const assertSafePublicUrl = async (value: string): Promise<URL> => {
 
   if (isIP(hostname)) return url;
 
-  const cached = dnsSafetyCache.get(hostname);
-  if (cached && cached.expiresAt > Date.now()) {
-    if (!cached.safe) {
-      throw new Error('URL resolves to a private or reserved IP address');
-    }
-    return url;
-  }
-
-  const addresses = await lookup(hostname, { all: true, verbatim: true });
-  const safe =
-    addresses.length > 0 &&
-    addresses.every(({ address }) => !isPrivateIpAddress(address));
-
-  dnsSafetyCache.set(hostname, {
-    safe,
-    expiresAt: Date.now() + DNS_SAFETY_CACHE_TTL_MS,
-  });
-
-  if (!safe) {
-    throw new Error('URL resolves to a private or reserved IP address');
-  }
+  await resolvePublicAddresses(hostname);
 
   return url;
+};
+
+export const resolvePublicAddresses = async (
+  hostname: string,
+  resolver: typeof lookup = lookup,
+) => {
+  const addresses = await resolver(hostname, { all: true, verbatim: true });
+  if (
+    !addresses.length ||
+    addresses.some(({ address }) => isPrivateIpAddress(address))
+  ) {
+    throw new Error('URL resolves to a private or reserved IP address');
+  }
+  return addresses;
 };

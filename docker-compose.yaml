@@ -7,6 +7,13 @@ services:
       - '3000:3000'
     volumes:
       - data:/home/perplexica/data
+    environment:
+      JEV_ENABLED: ${JEV_ENABLED:-false}
+      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe}
+      JEV_API_KEY: ${JEV_API_KEY:-}
+      JEV_MODEL: ${JEV_MODEL:-}
+      JEV_MAX_CANDIDATES: ${JEV_MAX_CANDIDATES:-24}
+      JEV_TIMEOUT_MS: ${JEV_TIMEOUT_MS:-2000}
     restart: unless-stopped
 
 volumes:

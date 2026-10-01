@@ -67,14 +67,17 @@ const socialSearchAction: ResearchAction<typeof schema> = {
       let res;
       try {
         res = await searchSearxng(q, {
+          signal: additionalConfig.session.signal,
           engines: ['reddit'],
           maxResults,
         });
       } catch (error) {
+        additionalConfig.session.signal.throwIfAborted();
         console.error(`Social search failed for query "${q}":`, error);
         return;
       }
 
+      additionalConfig.session.signal.throwIfAborted();
       if (!res.results || res.results.length === 0) return;
 
       const resultChunks: Chunk[] = dedupeSearchResults(

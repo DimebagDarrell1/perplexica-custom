@@ -238,6 +238,8 @@ const Navbar = () => {
       <div className="px-4 lg:px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center min-w-0">
+            {/* A new chat needs a full reload to reset the shared chat provider. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
               className="lg:hidden mr-3 p-2 -ml-2 rounded-lg hover:bg-light-secondary dark:hover:bg-dark-secondary transition-colors duration-200"

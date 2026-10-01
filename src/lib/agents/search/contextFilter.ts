@@ -1,3 +1,4 @@
+import { getJevConfig, rerankWithJev } from '@/lib/jev';
 import BaseEmbedding from '@/lib/models/base/embedding';
 import computeSimilarity from '@/lib/utils/computeSimilarity';
 import { splitText } from '@/lib/utils/splitText';
@@ -24,6 +25,8 @@ const throwIfAborted = (signal?: AbortSignal) => {
  * Configuration for the two-stage context filtering pipeline.
  */
 export type ContextFilterConfig = {
+  /** Optional web-only reranking before selecting pages to read. */
+  useJev: boolean;
   /** Maximum number of URLs to scrape after relevance ranking (default: 10) */
   topKUrls: number;
   /** Maximum number of relevant chunks to select from all scraped content (default: 30) */
@@ -41,6 +44,7 @@ export type ContextFilterConfig = {
 };
 
 const DEFAULT_CONFIG: ContextFilterConfig = {
+  useJev: false,
   topKUrls: 10,
   topKChunks: 30,
   chunkMaxTokens: 512,
@@ -433,12 +437,40 @@ export const buildFilteredContext = async (
     fullConfig.maxCandidateResults,
   );
 
-  const { rankedResults, queryEmbedding } = await rankResultsByRelevance(
-    query,
-    candidateWebFindings,
-    embeddingModel,
+  const useJev = fullConfig.useJev && uploadedFileFindings.length === 0;
+  const jevConfig = getJevConfig();
+  const shortlistSize =
+    useJev && jevConfig.enabled && jevConfig.configured
+      ? Math.max(fullConfig.topKUrls, jevConfig.maxCandidates)
+      : fullConfig.topKUrls;
+  const { rankedResults: shortlist, queryEmbedding } =
+    await rankResultsByRelevance(
+      query,
+      candidateWebFindings,
+      embeddingModel,
+      shortlistSize,
+    );
+  throwIfAborted(signal);
+  const reranking = useJev
+    ? await rerankWithJev(standaloneFollowUp || query, shortlist, signal)
+    : undefined;
+  const rankedResults = (reranking?.results || shortlist).slice(
+    0,
     fullConfig.topKUrls,
   );
+  if (reranking && reranking.status !== 'disabled') {
+    console.log(
+      JSON.stringify({
+        event: 'research_jev_rerank',
+        status: reranking.status,
+        reason: reranking.reason,
+        candidateCount: reranking.candidateCount,
+        durationMs: reranking.durationMs,
+        model: reranking.model,
+        usage: reranking.usage,
+      }),
+    );
+  }
   throwIfAborted(signal);
 
   console.log(
@@ -474,14 +506,29 @@ export const buildFilteredContext = async (
     `[ContextFilter] Selected ${selectedChunks.length} relevant chunks for writer`,
   );
 
-  const combinedChunks = [...selectedUploadChunks, ...selectedChunks];
-
-  if (combinedChunks.length === 0 && webFindings.length > 0) {
-    console.warn(
-      '[ContextFilter] Deep reading returned no chunks, falling back to top snippets',
-    );
-    return dedupeSearchResults(webFindings).slice(0, fullConfig.topKChunks);
-  }
+  // Failed deep reads still contribute their search snippets alongside uploads.
+  const readUrls = new Set(selectedChunks.map((chunk) => chunk.metadata.url));
+  const fallbackSnippets = rankedResults
+    .map((result) => result.chunk)
+    .filter((chunk) => !readUrls.has(chunk.metadata.url));
+  const webBudget = Math.max(
+    0,
+    fullConfig.topKChunks - selectedUploadChunks.length,
+  );
+  const reservedFallback = fallbackSnippets.slice(
+    0,
+    Math.min(fallbackSnippets.length, Math.max(1, Math.floor(webBudget / 3))),
+  );
+  const webChunks = selectedChunks.length
+    ? [
+        ...selectedChunks.slice(
+          0,
+          Math.max(0, webBudget - reservedFallback.length),
+        ),
+        ...reservedFallback,
+      ]
+    : fallbackSnippets.slice(0, webBudget);
+  const combinedChunks = [...selectedUploadChunks, ...webChunks];
 
   const selectedEvidence = dedupeEvidenceChunks(combinedChunks).slice(
     0,

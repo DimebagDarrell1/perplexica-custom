@@ -5,7 +5,7 @@ import fs from 'fs';
 import { splitText } from "../utils/splitText";
 import { PDFParse } from 'pdf-parse';
 import { CanvasFactory } from 'pdf-parse/worker';
-import officeParser from 'officeparser'
+import mammoth from 'mammoth'
 
 const supportedMimeTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'] as const
 
@@ -31,7 +31,7 @@ type FileRes = {
 
 class UploadManager {
     private embeddingModel: BaseEmbedding<any>;
-    static uploadsDir = path.join(process.cwd(), 'data', 'uploads');
+    static uploadsDir = path.join(process.env.DATA_DIR || process.cwd(), 'data', 'uploads');
     static uploadedFilesRecordPath = path.join(this.uploadsDir, 'uploaded_files.json');
 
     constructor(private params: UploadManagerParams) {
@@ -120,7 +120,12 @@ class UploadManager {
                     CanvasFactory
                 })
 
-                const pdfText = await parser.getText().then(res => res.text)
+                let pdfText: string;
+                try {
+                    pdfText = (await parser.getText()).text;
+                } finally {
+                    await parser.destroy();
+                }
 
                 const pdfSplittedText = splitText(pdfText, 512, 128)
                 const pdfEmbeddings = await this.embeddingModel.embedText(pdfSplittedText)
@@ -146,7 +151,7 @@ class UploadManager {
             case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
                 const docBuffer = fs.readFileSync(filePath);
 
-                const docText = await officeParser.parseOfficeAsync(docBuffer)
+                const { value: docText } = await mammoth.extractRawText({ buffer: docBuffer })
 
                 const docSplittedText = splitText(docText, 512, 128)
                 const docEmbeddings = await this.embeddingModel.embedText(docSplittedText)

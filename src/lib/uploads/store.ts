@@ -2,8 +2,6 @@ import BaseEmbedding from "../models/base/embedding";
 import UploadManager from "./manager";
 import computeSimilarity from "../utils/computeSimilarity";
 import { Chunk } from "../types";
-import { hashObj } from "../serverUtils";
-import fs from 'fs';
 
 type UploadStoreParams = {
     embeddingModel: BaseEmbedding<any>;
@@ -29,7 +27,7 @@ class UploadStore {
     }
 
     initializeStore() {
-        this.fileIds.forEach((fileId) => {
+        Array.from(new Set(this.fileIds)).forEach((fileId) => {
             const file = UploadManager.getFile(fileId)
 
             if (!file) {
@@ -54,12 +52,10 @@ class UploadStore {
     async query(queries: string[], topK: number): Promise<Chunk[]> {
         const queryEmbeddings = await this.embeddingModel.embedText(queries)
 
-        const results: { chunk: Chunk; score: number; }[][] = [];
-        const hashResults: string[][] = []
-
-        await Promise.all(queryEmbeddings.map(async (query) => {
-            const similarities = this.records.map((record, idx) => {
+        const results = queryEmbeddings.map((query) => {
+            return this.records.map((record, idx) => {
                 return {
+                    recordIndex: idx,
                     chunk: {
                         content: record.content,
                         metadata: {
@@ -68,30 +64,27 @@ class UploadStore {
                         }
                     },
                     score: computeSimilarity(query, record.embedding)
-                } as { chunk: Chunk; score: number; };
+                } as { recordIndex: number; chunk: Chunk; score: number; };
             }).sort((a, b) => b.score - a.score)
+        })
 
-            results.push(similarities)
-            hashResults.push(similarities.map(s => hashObj(s)))
-        }))
-
-        const chunkMap: Map<string, Chunk> = new Map();
-        const scoreMap: Map<string, number> = new Map();
+        const chunkMap: Map<number, Chunk> = new Map();
+        const scoreMap: Map<number, number> = new Map();
         const k = 60;
 
         for (let i = 0; i < results.length; i++) {
             for (let j = 0; j < results[i].length; j++) {
-                const chunkHash = hashResults[i][j]
+                const recordIndex = results[i][j].recordIndex
 
-                chunkMap.set(chunkHash, results[i][j].chunk);
-                scoreMap.set(chunkHash, (scoreMap.get(chunkHash) || 0) + results[i][j].score / (j + 1 + k));
+                chunkMap.set(recordIndex, results[i][j].chunk);
+                scoreMap.set(recordIndex, (scoreMap.get(recordIndex) || 0) + 1 / (j + 1 + k));
             }
         }
 
         const finalResults = Array.from(scoreMap.entries())
             .sort((a, b) => b[1] - a[1])
-            .map(([chunkHash, _score]) => {
-                return chunkMap.get(chunkHash)!;
+            .map(([recordIndex, _score]) => {
+                return chunkMap.get(recordIndex)!;
             })
 
         return finalResults.slice(0, topK);

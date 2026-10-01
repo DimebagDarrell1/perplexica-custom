@@ -1,3 +1,4 @@
+import { safeLink } from '@/lib/web/safeLinks';
 /* eslint-disable @next/next/no-img-element */
 import {
   Dialog,
@@ -29,8 +30,9 @@ const MessageSources = ({ sources }: { sources: Chunk[] }) => {
         <a
           className="bg-light-100 hover:bg-light-200 dark:bg-dark-100 dark:hover:bg-dark-200 transition duration-200 rounded-lg p-3 flex flex-col space-y-2 font-medium"
           key={i}
-          href={source.metadata.url}
+          href={safeLink(source.metadata.url)}
           target="_blank"
+          rel="noopener noreferrer"
         >
           <p className="dark:text-white text-xs overflow-hidden whitespace-nowrap text-ellipsis">
             {source.metadata.title}
@@ -116,8 +118,9 @@ const MessageSources = ({ sources }: { sources: Chunk[] }) => {
                       <a
                         className="bg-light-secondary hover:bg-light-200 dark:bg-dark-secondary dark:hover:bg-dark-200 border border-light-200 dark:border-dark-200 transition duration-200 rounded-lg p-3 flex flex-col space-y-2 font-medium"
                         key={i}
-                        href={source.metadata.url}
+                        href={safeLink(source.metadata.url)}
                         target="_blank"
+                        rel="noopener noreferrer"
                       >
                         <p className="dark:text-white text-xs overflow-hidden whitespace-nowrap text-ellipsis">
                           {source.metadata.title}

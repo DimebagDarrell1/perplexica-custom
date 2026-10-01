@@ -63,6 +63,7 @@ const scrapeURLAction: ResearchAction<typeof schema> = {
         try {
           const scraped = await Scraper.scrape(url, {
             preferFirecrawl: additionalConfig.mode !== 'speed',
+            signal: additionalConfig.session.signal,
           });
 
           if (
@@ -128,7 +129,11 @@ const scrapeURLAction: ResearchAction<typeof schema> = {
             );
           }
 
-          const chunks = splitText(scraped.content, 4000, 500);
+          const chunks = splitText(
+            scraped.content.slice(0, 50000),
+            4000,
+            500,
+          ).slice(0, 8);
           let accumulatedContent = '';
 
           if (chunks.length > 1) {
@@ -155,6 +160,7 @@ const scrapeURLAction: ResearchAction<typeof schema> = {
                 }),
               );
             } catch (err) {
+              additionalConfig.session.signal.throwIfAborted();
               console.log(
                 'Error during extraction, falling back to raw content',
                 err,
@@ -162,7 +168,7 @@ const scrapeURLAction: ResearchAction<typeof schema> = {
               accumulatedContent = chunks[0];
             }
           } else {
-            accumulatedContent = scraped.content;
+            accumulatedContent = chunks[0] || '';
           }
 
           results.push({
@@ -175,14 +181,8 @@ const scrapeURLAction: ResearchAction<typeof schema> = {
             },
           });
         } catch (error) {
+          additionalConfig.session.signal.throwIfAborted();
           console.error(`Failed to scrape URL ${url}:`, error);
-          results.push({
-            content: `Failed to fetch content from ${url}: ${error}`,
-            metadata: {
-              url,
-              title: `Error scraping ${url}`,
-            },
-          });
         }
       }),
     );

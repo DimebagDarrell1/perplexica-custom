@@ -1,12 +1,12 @@
 import { cn } from '@/lib/utils';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import AttachSmall from './MessageInputActions/AttachSmall';
 import { useChat } from '@/lib/hooks/useChat';
 
 const MessageInput = () => {
-  const { loading, sendMessage } = useChat();
+  const { loading, stopping, cancelMessage, sendMessage } = useChat();
 
   const [copilotEnabled, setCopilotEnabled] = useState(false);
   const [message, setMessage] = useState('');
@@ -48,13 +48,20 @@ const MessageInput = () => {
   return (
     <form
       onSubmit={(e) => {
-        if (loading) return;
         e.preventDefault();
+        if (loading) return;
         sendMessage(message);
         setMessage('');
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.shiftKey && !loading) {
+        if (
+          e.key === 'Enter' &&
+          !e.shiftKey &&
+          !e.nativeEvent.isComposing &&
+          e.keyCode !== 229 &&
+          !loading &&
+          e.target instanceof HTMLTextAreaElement
+        ) {
           e.preventDefault();
           sendMessage(message);
           setMessage('');
@@ -78,20 +85,46 @@ const MessageInput = () => {
       />
       {mode === 'single' && (
         <button
-          disabled={message.trim().length === 0 || loading}
+          type={loading ? 'button' : 'submit'}
+          aria-label={
+            loading
+              ? stopping
+                ? 'Stopping response'
+                : 'Stop response'
+              : 'Send message'
+          }
+          onClick={loading ? () => void cancelMessage() : undefined}
+          disabled={loading ? stopping : message.trim().length === 0}
           className="bg-[#24A0ED] text-white disabled:text-black/50 dark:disabled:text-white/50 hover:bg-opacity-85 transition duration-100 disabled:bg-[#e0e0dc79] dark:disabled:bg-[#ececec21] rounded-full p-2"
         >
-          <ArrowUp className="bg-background" size={17} />
+          {loading ? (
+            <Square size={17} fill="currentColor" />
+          ) : (
+            <ArrowUp className="bg-background" size={17} />
+          )}
         </button>
       )}
       {mode === 'multi' && (
         <div className="flex flex-row items-center justify-between w-full pt-2">
           <AttachSmall />
           <button
-            disabled={message.trim().length === 0 || loading}
+            type={loading ? 'button' : 'submit'}
+            aria-label={
+              loading
+                ? stopping
+                  ? 'Stopping response'
+                  : 'Stop response'
+                : 'Send message'
+            }
+            onClick={loading ? () => void cancelMessage() : undefined}
+            disabled={loading ? stopping : message.trim().length === 0}
             className="bg-[#24A0ED] text-white disabled:text-black/50 dark:disabled:text-white/50 hover:bg-opacity-85 transition duration-100 disabled:bg-[#e0e0dc79] dark:disabled:bg-[#ececec21] rounded-full p-2"
           >
-            <ArrowUp className="bg-background" size={17} />
+            {loading ? (
+              <Square size={17} fill="currentColor" />
+            ) : (
+              <ArrowUp className="bg-background" size={17} />
+            )}
           </button>
         </div>
       )}

@@ -57,7 +57,7 @@ const AssistantSteps = ({
   isLast,
 }: {
   block: ResearchBlock;
-  status: 'answering' | 'completed' | 'error';
+  status: 'answering' | 'completed' | 'error' | 'cancelled';
   isLast: boolean;
 }) => {
   const [isExpanded, setIsExpanded] = useState(

@@ -16,6 +16,9 @@ const nextConfig = {
       './node_modules/@napi-rs/canvas/**',
       './node_modules/@napi-rs/canvas-linux-x64-gnu/**',
       './node_modules/@napi-rs/canvas-linux-x64-musl/**',
+      './node_modules/@napi-rs/canvas-linux-arm64-gnu/**',
+      './node_modules/@napi-rs/canvas-linux-arm64-musl/**',
+      './node_modules/pdf-parse/node_modules/@napi-rs/canvas*/**',
     ],
   },
   env: {

@@ -22,6 +22,8 @@ import { useSpeech } from 'react-text-to-speech';
 import ThinkBox from './ThinkBox';
 import { useChat, Section } from '@/lib/hooks/useChat';
 import Citation from './MessageRenderer/Citation';
+import { safeHtmlLiteral } from './MessageRenderer/safeHtml';
+import { safeLink } from '@/lib/web/safeLinks';
 import AssistantSteps from './AssistantSteps';
 import { ResearchBlock } from '@/lib/types';
 import Renderer from './Widgets/Renderer';
@@ -75,6 +77,7 @@ const MessageBox = ({
   const { speechStatus, start, stop } = useSpeech({ text: speechMessage });
 
   const markdownOverrides: MarkdownToJSX.Options = {
+    sanitizer: (value) => safeLink(value) || null,
     renderRule(next, node, renderChildren, state) {
       if (node.type === RuleType.codeInline) {
         return `\`${node.text}\``;
@@ -88,7 +91,8 @@ const MessageBox = ({
         );
       }
 
-      return next();
+      const literal = safeHtmlLiteral(node);
+      return literal === undefined ? next() : literal;
     },
     overrides: {
       think: {
@@ -98,13 +102,29 @@ const MessageBox = ({
         },
       },
       citation: {
-        component: Citation,
+        component: ({ index }: { index: string }) => {
+          const sourceIndex = Number(index);
+          const source =
+            Number.isSafeInteger(sourceIndex) && sourceIndex > 0
+              ? sources[sourceIndex - 1]
+              : undefined;
+          return source ? (
+            <Citation href={source.metadata.url}>{sourceIndex}</Citation>
+          ) : (
+            <span>[{index}]</span>
+          );
+        },
       },
     },
   };
 
   return (
     <div className="space-y-6">
+      {section.message.status === 'cancelled' && (
+        <p role="status" className="text-sm text-black/60 dark:text-white/60">
+          Stopped. Any partial answer is saved.
+        </p>
+      )}
       <div className={'w-full pt-8 break-words'}>
         <h2 className="text-black dark:text-white font-medium text-3xl lg:w-9/12">
           {section.message.query}

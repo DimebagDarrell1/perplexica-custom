@@ -61,3 +61,72 @@ test('Firecrawl requests main-content markdown and caches successful results', a
     }
   }
 });
+
+test('Firecrawl bounds responses and cached content and respects pre-aborted requests', async (t) => {
+  const previous = { ...process.env };
+  process.env.FIRECRAWL_ENABLED = 'true';
+  process.env.FIRECRAWL_API_URL = 'http://firecrawl.test:3002';
+  let calls = 0;
+  let response;
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    calls++;
+    assert.equal(init.redirect, 'error');
+    return response;
+  });
+  try {
+    const aborted = new AbortController();
+    aborted.abort();
+    await assert.rejects(
+      scrapeWithFirecrawl('https://example.com/aborted', aborted.signal),
+      { name: 'AbortError' },
+    );
+    assert.equal(calls, 0);
+    response = Response.json({
+      success: true,
+      data: { markdown: 'x'.repeat(100_000) },
+    });
+    const result = await scrapeWithFirecrawl(
+      'https://example.com/bounded-content',
+    );
+    assert.equal(result.content.length, 50_000);
+    await assert.rejects(
+      scrapeWithFirecrawl(
+        'https://example.com/bounded-content',
+        aborted.signal,
+      ),
+      { name: 'AbortError' },
+    );
+    assert.equal(calls, 1);
+    response = new Response('x', { headers: { 'Content-Length': '2000001' } });
+    await assert.rejects(
+      scrapeWithFirecrawl('https://example.com/oversize-header'),
+      /size limit/,
+    );
+    let cancelled = false;
+    response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(2_000_001));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    );
+    await assert.rejects(
+      scrapeWithFirecrawl('https://example.com/oversize-stream'),
+      /size limit/,
+    );
+    assert.equal(cancelled, true);
+    response = Response.json(null);
+    await assert.rejects(
+      scrapeWithFirecrawl('https://example.com/null'),
+      /no markdown/,
+    );
+  } finally {
+    for (const key of ['FIRECRAWL_ENABLED', 'FIRECRAWL_API_URL']) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
+});

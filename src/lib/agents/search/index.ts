@@ -1,3 +1,5 @@
+import { abortable } from '@/lib/utils/cancellation';
+import { CancellableLLM, CancellableEmbedding } from '@/lib/models/cancellable';
 import { ResearcherOutput, SearchAgentInput } from './types';
 import SessionManager from '@/lib/session';
 import { classify } from './classifier';
@@ -17,6 +19,17 @@ import { TextBlock } from '@/lib/types';
 
 class SearchAgent {
   async searchAsync(session: SessionManager, input: SearchAgentInput) {
+    input = {
+      ...input,
+      config: {
+        ...input.config,
+        llm: new CancellableLLM(input.config.llm, session.signal),
+        embedding: new CancellableEmbedding(
+          input.config.embedding,
+          session.signal,
+        ),
+      },
+    };
     try {
       const exists = await db.query.messages.findFirst({
         where: and(
@@ -66,6 +79,7 @@ class SearchAgent {
       });
 
       const widgetPromise = WidgetExecutor.executeAll({
+        signal: session.signal,
         classification,
         chatHistory: input.chatHistory,
         followUp: input.followUp,
@@ -96,10 +110,10 @@ class SearchAgent {
         });
       }
 
-      const [widgetOutputs, searchResults] = await Promise.all([
-        widgetPromise,
-        searchPromise,
-      ]);
+      const [widgetOutputs, searchResults] = await abortable(
+        () => Promise.all([widgetPromise, searchPromise]),
+        session.signal,
+      );
 
       // --- Two-stage context pipeline ---
       // Rank -> scrape top URLs -> select relevant chunks
@@ -109,6 +123,8 @@ class SearchAgent {
         classification.standaloneFollowUp,
         input.config.embedding,
         input.config.mode,
+        session.signal,
+        input.config.fileIds.length > 0,
       );
 
       if (searchResults?.sourceBlockId) {
@@ -188,7 +204,7 @@ class SearchAgent {
         }
       }
 
-      session.emit('end', {});
+      session.signal.throwIfAborted();
 
       await db
         .update(messages)
@@ -203,24 +219,39 @@ class SearchAgent {
           ),
         )
         .execute();
+      session.emit('end', { status: 'completed' });
     } catch (err) {
-      console.error('Search agent error:', err);
-
-      session.emit('error', {
-        data:
-          err instanceof Error ? err.message : 'An error occurred during search',
-      });
-
-      await db
-        .update(messages)
-        .set({ status: 'error' })
-        .where(
-          and(
-            eq(messages.chatId, input.chatId),
-            eq(messages.messageId, input.messageId),
-          ),
-        )
-        .execute();
+      const cancelled = session.signal.aborted;
+      if (!cancelled) console.error('Search agent error:', err);
+      try {
+        await db
+          .update(messages)
+          .set({
+            status: cancelled ? 'cancelled' : 'error',
+            responseBlocks: session.getAllBlocks(),
+          })
+          .where(
+            and(
+              eq(messages.chatId, input.chatId),
+              eq(messages.messageId, input.messageId),
+            ),
+          )
+          .execute();
+      } catch (saveError) {
+        console.error('Failed to save partial answer:', saveError);
+        session.emit('error', {
+          data: 'Could not save the partial answer. Please keep this page open.',
+        });
+        return;
+      }
+      if (cancelled) session.emit('end', { status: 'cancelled' });
+      else
+        session.emit('error', {
+          data:
+            err instanceof Error
+              ? err.message
+              : 'An error occurred during search',
+        });
     }
   }
 }

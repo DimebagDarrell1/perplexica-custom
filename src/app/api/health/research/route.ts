@@ -1,3 +1,4 @@
+import { getJevStatus } from '@/lib/jev';
 import { requireAdminToken } from '@/lib/config/security';
 import { checkFirecrawlHealth, getFirecrawlConfig } from '@/lib/firecrawl';
 import { checkSearxngHealth } from '@/lib/searxng';
@@ -26,6 +27,7 @@ export const GET = async (request: Request) => {
       timestamp: new Date().toISOString(),
       services: {
         searxng,
+        jev: getJevStatus(),
         firecrawl,
         nativeExtraction: {
           enabled: true,

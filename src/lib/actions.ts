@@ -21,10 +21,12 @@ export const getSuggestions = async (chatHistory: [string, string][]) => {
   return data.suggestions;
 };
 
-export const getApproxLocation = async () => {
+export const getApproxLocation = async (signal?: AbortSignal) => {
   const res = await fetch('https://free.freeipapi.com/api/json', {
     method: 'GET',
+    signal: signal ?? AbortSignal.timeout(10_000),
   });
+  if (!res.ok) throw new Error('Location service unavailable');
 
   const data = await res.json();
 

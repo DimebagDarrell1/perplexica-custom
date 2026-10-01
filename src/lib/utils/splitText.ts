@@ -90,3 +90,7 @@ export const splitText = (
 
   return result;
 };
+
+/** Bound evidence text without assuming that four characters equal one token. */
+export const truncateTokens = (text: string, limit: number): string =>
+  enc.decode(enc.encode(text).slice(0, Math.max(0, limit)));

@@ -1,0 +1,81 @@
+name: Quality checks
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATA_DIR: ${{ runner.temp }}/perplexica-check
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm install --global yarn@1.22.22
+      - run: yarn install --frozen-lockfile
+      - name: Prepare isolated test data
+        run: |
+          mkdir -p "$DATA_DIR/data"
+          cp -R drizzle "$DATA_DIR/drizzle"
+      - run: yarn qa
+      - run: yarn build
+      - run: node node_modules/playwright/cli.js install --with-deps chromium-headless-shell
+      - name: Verify locked Chromium launches
+        run: node scripts/check-browser.mjs
+      - name: Verify standalone app, migrations, and assets
+        run: |
+          mkdir -p .next/standalone/public/_next/static
+          cp -R public/. .next/standalone/public/
+          cp -R .next/static/. .next/standalone/public/_next/static/
+          HOSTNAME=127.0.0.1 PORT=3010 JEV_ENABLED=false FIRECRAWL_ENABLED=false node .next/standalone/server.js > "$RUNNER_TEMP/perplexica-runtime.log" 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          if ! node scripts/check-runtime.mjs http://127.0.0.1:3010; then
+            cat "$RUNNER_TEMP/perplexica-runtime.log"
+            exit 1
+          fi
+
+  containers:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile: [Dockerfile, Dockerfile.slim]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build without publishing
+        run: docker build --file "${{ matrix.dockerfile }}" --tag perplexica-ci .
+      - name: Verify packaged Chromium launches
+        run: docker run --rm -i perplexica-ci node --input-type=module < scripts/check-browser.mjs
+      - name: Verify container startup, migrations, and assets
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          docker run --detach --name perplexica-runtime --env HOSTNAME=0.0.0.0 --env JEV_ENABLED=false --env FIRECRAWL_ENABLED=false perplexica-ci
+          args=()
+          if [ "$DOCKERFILE" = Dockerfile ]; then
+            args+=(--bundled-search)
+          fi
+          docker exec --interactive perplexica-runtime node --input-type=module - http://127.0.0.1:3000 "${args[@]}" < scripts/check-runtime.mjs
+      - name: Show container logs
+        if: failure()
+        run: docker logs perplexica-runtime 2>&1 || true
+      - name: Remove disposable container
+        if: always()
+        run: docker rm --force perplexica-runtime 2>/dev/null || true

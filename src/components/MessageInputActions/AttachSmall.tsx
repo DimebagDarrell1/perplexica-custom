@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import {
   Popover,
   PopoverButton,
@@ -17,31 +18,46 @@ const AttachSmall = () => {
   const fileInputRef = useRef<any>();
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
+    const input = e.target;
     setLoading(true);
-    const data = new FormData();
+    try {
+      const data = new FormData();
 
-    for (let i = 0; i < e.target.files!.length; i++) {
-      data.append('files', e.target.files![i]);
+      for (let i = 0; i < e.target.files!.length; i++) {
+        data.append('files', e.target.files![i]);
+      }
+
+      const embeddingModelProvider = localStorage.getItem(
+        'embeddingModelProviderId',
+      );
+      const embeddingModel = localStorage.getItem('embeddingModelKey');
+
+      data.append('embedding_model_provider_id', embeddingModelProvider!);
+      data.append('embedding_model_key', embeddingModel!);
+
+      const res = await fetch(`/api/uploads`, {
+        method: 'POST',
+        body: data,
+      });
+
+      const resData = await res.json();
+
+      if (!res.ok || !Array.isArray(resData.files))
+        throw new Error(resData.message || 'File upload failed');
+      setFiles([...files, ...resData.files]);
+      setFileIds([
+        ...fileIds,
+        ...resData.files.map((file: any) => file.fileId),
+      ]);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'File upload failed',
+      );
+    } finally {
+      input.value = '';
+      setLoading(false);
     }
-
-    const embeddingModelProvider = localStorage.getItem(
-      'embeddingModelProviderId',
-    );
-    const embeddingModel = localStorage.getItem('embeddingModelKey');
-
-    data.append('embedding_model_provider_id', embeddingModelProvider!);
-    data.append('embedding_model_key', embeddingModel!);
-
-    const res = await fetch(`/api/uploads`, {
-      method: 'POST',
-      body: data,
-    });
-
-    const resData = await res.json();
-
-    setFiles([...files, ...resData.files]);
-    setFileIds([...fileIds, ...resData.files.map((file: any) => file.fileId)]);
-    setLoading(false);
   };
 
   return loading ? (
@@ -93,6 +109,7 @@ const AttachSmall = () => {
                         <p className="text-xs">Add</p>
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
                           setFiles([]);
                           setFileIds([]);

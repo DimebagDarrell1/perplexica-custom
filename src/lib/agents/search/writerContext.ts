@@ -1,3 +1,6 @@
+import { CancellableEmbedding } from '@/lib/models/cancellable';
+import { truncateTokens } from '@/lib/utils/splitText';
+import { abortable } from '@/lib/utils/cancellation';
 import BaseEmbedding from '@/lib/models/base/embedding';
 import { Chunk } from '@/lib/types';
 import { buildFilteredContext, ContextFilterConfig } from './contextFilter';
@@ -32,7 +35,7 @@ const MODE_CONTEXT_FILTER_CONFIG: Record<
   >
 > = {
   speed: {
-    topKUrls: 5,
+    topKUrls: 3,
     topKChunks: 15,
     maxCandidateResults: MODE_SEARCH_LIMITS.speed.maxCandidateResults,
     preferFirecrawl: false,
@@ -63,7 +66,12 @@ const prepareFallbackChunks = (chunks: Chunk[], limit: number): Chunk[] => {
     ),
   );
 
-  return groupEvidenceBySource([...uploads, ...web].slice(0, limit));
+  const uploadLimit = web.length ? Math.max(1, Math.floor(limit / 3)) : limit;
+  const selectedUploads = uploads.slice(0, uploadLimit);
+  return groupEvidenceBySource([
+    ...selectedUploads,
+    ...web.slice(0, limit - selectedUploads.length),
+  ]);
 };
 
 /**
@@ -79,34 +87,53 @@ export const prepareWriterContext = async (
   standaloneFollowUp: string | undefined,
   embeddingModel: BaseEmbedding<any>,
   mode: SearchAgentConfig['mode'],
+  signal?: AbortSignal,
+  hasUploadedFiles = false,
 ): Promise<Chunk[]> => {
+  signal?.throwIfAborted();
   let filteredChunks = searchFindings || [];
-  const contextFilterConfig = MODE_CONTEXT_FILTER_CONFIG[mode];
+  const contextFilterConfig = {
+    ...MODE_CONTEXT_FILTER_CONFIG[mode],
+    useJev: mode !== 'speed' && !hasUploadedFiles,
+  };
   const fallbackLimit = MODE_SEARCH_LIMITS[mode].fallbackContextChunks;
 
   if (filteredChunks.length > 0) {
     const controller = new AbortController();
+    const pipelineSignal = signal
+      ? AbortSignal.any([controller.signal, signal])
+      : controller.signal;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     try {
       filteredChunks = await Promise.race([
-        buildFilteredContext(
-          followUp,
-          standaloneFollowUp,
-          filteredChunks,
-          embeddingModel,
-          contextFilterConfig,
-          controller.signal,
+        abortable(
+          () =>
+            buildFilteredContext(
+              followUp,
+              standaloneFollowUp,
+              filteredChunks,
+              new CancellableEmbedding(embeddingModel, pipelineSignal),
+              contextFilterConfig,
+              pipelineSignal,
+            ),
+          pipelineSignal,
         ),
         new Promise<Chunk[]>((resolve) => {
-          timeoutId = setTimeout(() => {
-            controller.abort();
-            resolve(prepareFallbackChunks(searchFindings || [], fallbackLimit));
-          }, PIPELINE_TIMEOUT_MS);
+          timeoutId = setTimeout(
+            () => {
+              controller.abort();
+              resolve(
+                prepareFallbackChunks(searchFindings || [], fallbackLimit),
+              );
+            },
+            mode === 'speed' ? 15_000 : PIPELINE_TIMEOUT_MS,
+          );
         }),
       ]);
     } catch (err) {
       controller.abort();
+      signal?.throwIfAborted();
       console.error(
         '[prepareWriterContext] Context filter pipeline failed, falling back to raw snippets:',
         err,
@@ -135,12 +162,21 @@ export const prepareWriterContext = async (
     }
   }
 
-  return groupEvidenceBySource(
+  signal?.throwIfAborted();
+  const evidence = groupEvidenceBySource(
     dedupeEvidenceChunks(filteredChunks).slice(
       0,
       contextFilterConfig.topKChunks,
     ),
   );
+  const tokenBudget = { speed: 8000, balanced: 16000, quality: 32000 }[mode];
+  return evidence.map((chunk) => ({
+    ...chunk,
+    content: truncateTokens(
+      chunk.content,
+      Math.floor(tokenBudget / evidence.length),
+    ),
+  }));
 };
 
 /**
@@ -158,13 +194,21 @@ export const formatWriterContext = (
 
   let uploadedFilesContext = '';
 
-  if (fileIds.length > 0) {
+  const representedFiles = new Set(
+    filteredChunks.map((chunk) =>
+      String(chunk.metadata.url || '').replace(/^file_id:\/\//, ''),
+    ),
+  );
+  const missingFileIds = [...new Set(fileIds)].filter(
+    (id) => !representedFiles.has(id),
+  );
+  if (missingFileIds.length > 0) {
     try {
-      const fileData = UploadStore.getFileData(fileIds);
+      const fileData = UploadStore.getFileData(missingFileIds);
       uploadedFilesContext = fileData
         .map(
           (file, index) =>
-            `<file index="${index + 1}" name="${escapeXml(file.fileName)}">${escapeXml(file.initialContent)}</file>`,
+            `<file index="${index + 1}" name="${escapeXml(file.fileName)}">${escapeXml(truncateTokens(file.initialContent, Math.max(1, Math.floor(3000 / fileData.length))))}</file>`,
         )
         .join('\n');
     } catch (error) {
@@ -208,7 +252,7 @@ export const buildWriterUserMessage = (
     const uploadedFilesContext = fileData
       .map(
         (file, index) =>
-          `<file index="${index + 1}" name="${escapeXml(file.fileName)}">${escapeXml(file.initialContent)}</file>`,
+          `<file index="${index + 1}" name="${escapeXml(file.fileName)}"></file>`,
       )
       .join('\n');
 

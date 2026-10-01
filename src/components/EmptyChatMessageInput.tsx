@@ -47,7 +47,13 @@ const EmptyChatMessageInput = () => {
         setMessage('');
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (
+          e.key === 'Enter' &&
+          !e.shiftKey &&
+          !e.nativeEvent.isComposing &&
+          e.keyCode !== 229 &&
+          e.target instanceof HTMLTextAreaElement
+        ) {
           e.preventDefault();
           sendMessage(message);
           setMessage('');

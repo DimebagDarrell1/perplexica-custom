@@ -25,6 +25,37 @@ type CacheEntry = {
 
 const cache = new Map<string, CacheEntry>();
 const MAX_CACHE_ENTRIES = 100;
+const MAX_RESPONSE_BYTES = 2_000_000;
+const MAX_CONTENT_CHARS = 50_000;
+
+async function readScrapeResponse(
+  response: Response,
+): Promise<FirecrawlResponse> {
+  if (Number(response.headers.get('content-length')) > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel();
+    throw new Error('Firecrawl response exceeded the extraction size limit');
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Firecrawl returned an empty response');
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_RESPONSE_BYTES)
+        throw new Error(
+          'Firecrawl response exceeded the extraction size limit',
+        );
+      chunks.push(value);
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
 
 const readPositiveInteger = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
@@ -40,7 +71,10 @@ export const getFirecrawlConfig = () => {
     enabled,
     apiUrl,
     apiKey: process.env.FIRECRAWL_API_KEY || '',
-    timeoutMs: readPositiveInteger(process.env.FIRECRAWL_TIMEOUT_MS, 20_000),
+    timeoutMs: Math.min(
+      readPositiveInteger(process.env.FIRECRAWL_TIMEOUT_MS, 20_000),
+      60_000,
+    ),
     maxAgeMs: readPositiveInteger(process.env.FIRECRAWL_MAX_AGE_MS, 3_600_000),
     localCacheTtlMs: readPositiveInteger(
       process.env.FIRECRAWL_CACHE_TTL_MS,
@@ -83,6 +117,7 @@ export const scrapeWithFirecrawl = async (
   url: string,
   signal?: AbortSignal,
 ): Promise<FirecrawlScrapeResult> => {
+  signal?.throwIfAborted();
   const config = getFirecrawlConfig();
   if (!config.enabled) {
     throw new Error('Firecrawl is not enabled');
@@ -99,6 +134,7 @@ export const scrapeWithFirecrawl = async (
   try {
     const response = await fetch(getScrapeEndpoint(config.apiUrl), {
       method: 'POST',
+      redirect: 'error',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
@@ -117,20 +153,33 @@ export const scrapeWithFirecrawl = async (
     });
 
     if (!response.ok) {
+      await response.body?.cancel();
       throw new Error(`Firecrawl returned HTTP ${response.status}`);
     }
 
-    const payload = (await response.json()) as FirecrawlResponse;
-    const content = payload.data?.markdown?.trim() || '';
-    if (!payload.success || !content) {
+    const payload = await readScrapeResponse(response);
+    signal?.throwIfAborted();
+    const content =
+      typeof payload?.data?.markdown === 'string'
+        ? payload.data.markdown.trim().slice(0, MAX_CONTENT_CHARS)
+        : '';
+    if (!payload?.success || !content) {
       throw new Error('Firecrawl returned no markdown content');
     }
 
     const result = {
       content,
-      title: payload.data?.metadata?.title || `Content from ${url}`,
+      title:
+        typeof payload.data?.metadata?.title === 'string'
+          ? payload.data.metadata.title.slice(0, 2000)
+          : `Content from ${url}`,
       url:
-        payload.data?.metadata?.sourceURL || payload.data?.metadata?.url || url,
+        [payload.data?.metadata?.sourceURL, payload.data?.metadata?.url].find(
+          (value) =>
+            typeof value === 'string' &&
+            value.length > 0 &&
+            value.length <= 8192,
+        ) || url,
       provider: 'firecrawl' as const,
     };
 
@@ -162,17 +211,20 @@ export const checkFirecrawlHealth = async (): Promise<{
   const timeoutId = setTimeout(() => controller.abort(), 3_000);
 
   try {
-    const response = await fetch(config.apiUrl, {
+    const response = await fetch(`${config.apiUrl}/v0/health/liveness`, {
       signal: controller.signal,
+      redirect: 'error',
       headers: config.apiKey
         ? { Authorization: `Bearer ${config.apiKey}` }
         : undefined,
     });
 
+    const payload = response.ok ? await response.json() : undefined;
+
     return {
       enabled: true,
       configured: true,
-      reachable: response.status < 500,
+      reachable: response.ok && payload?.status === 'ok',
       status: response.status,
     };
   } catch (error) {

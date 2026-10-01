@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { getSuggestions } from '../actions';
 import { MinimalProvider } from '../models/types';
 import { getAutoMediaSearch } from '../config/clientRegistry';
+import { readJsonLines } from '@/lib/utils/readJsonLines';
 import { applyPatch } from 'rfc6902';
 import { Widget } from '@/components/ChatWindow';
 
@@ -39,6 +40,8 @@ type ChatContext = {
   optimizationMode: string;
   isMessagesLoaded: boolean;
   loading: boolean;
+  stopping: boolean;
+  cancelMessage: () => Promise<void>;
   notFound: boolean;
   messageAppeared: boolean;
   isReady: boolean;
@@ -113,8 +116,9 @@ const checkConfig = async (
     }
 
     const chatModelProvider =
-      providers.find((p) => p.id === chatModelProviderId && p.chatModels.length > 0) ??
-      providers.find((p) => p.chatModels.length > 0);
+      providers.find(
+        (p) => p.id === chatModelProviderId && p.chatModels.length > 0,
+      ) ?? providers.find((p) => p.chatModels.length > 0);
 
     if (!chatModelProvider) {
       throw new Error(
@@ -130,8 +134,10 @@ const checkConfig = async (
     chatModelKey = chatModel.key;
 
     const embeddingModelProvider =
-      providers.find((p) => p.id === embeddingModelProviderId && p.embeddingModels.length > 0) ??
-      providers.find((p) => p.embeddingModels.length > 0);
+      providers.find(
+        (p) =>
+          p.id === embeddingModelProviderId && p.embeddingModels.length > 0,
+      ) ?? providers.find((p) => p.embeddingModels.length > 0);
 
     if (!embeddingModelProvider) {
       throw new Error(
@@ -248,6 +254,8 @@ export const chatContext = createContext<ChatContext>({
   isMessagesLoaded: false,
   isReady: false,
   loading: false,
+  stopping: false,
+  cancelMessage: async () => {},
   messageAppeared: false,
   messages: [],
   sections: [],
@@ -256,15 +264,15 @@ export const chatContext = createContext<ChatContext>({
   chatModelProvider: { key: '', providerId: '' },
   embeddingModelProvider: { key: '', providerId: '' },
   researchEnded: false,
-  rewrite: () => { },
-  sendMessage: async () => { },
-  setFileIds: () => { },
-  setFiles: () => { },
-  setSources: () => { },
-  setOptimizationMode: () => { },
-  setChatModelProvider: () => { },
-  setEmbeddingModelProvider: () => { },
-  setResearchEnded: () => { },
+  rewrite: () => {},
+  sendMessage: async () => {},
+  setFileIds: () => {},
+  setFiles: () => {},
+  setSources: () => {},
+  setOptimizationMode: () => {},
+  setChatModelProvider: () => {},
+  setEmbeddingModelProvider: () => {},
+  setResearchEnded: () => {},
 });
 
 export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
@@ -277,6 +285,30 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
   const [newChatCreated, setNewChatCreated] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const activeSessionRef = useRef<string | null>(null);
+  const stopRequestedRef = useRef(false);
+  const cancelMessage = async () => {
+    stopRequestedRef.current = true;
+    setStopping(true);
+    if (!activeSessionRef.current) return;
+    try {
+      const response = await fetch(
+        `/api/chat/${activeSessionRef.current}/stop`,
+        { method: 'POST' },
+      );
+      if (!response.ok)
+        throw new Error('Could not stop this response. Please try again.');
+    } catch (error) {
+      stopRequestedRef.current = false;
+      setStopping(false);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Could not stop this response.',
+      );
+    }
+  };
   const [messageAppeared, setMessageAppeared] = useState(false);
 
   const [researchEnded, setResearchEnded] = useState(false);
@@ -332,7 +364,7 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
       msg.responseBlocks.forEach((block) => {
         if (block.type === 'text') {
           let processedText = block.data;
-          const citationRegex = /\[([^\]]+)\]/g;
+          const citationRegex = /\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g;
           const regex = /\[(\d+)\]/g;
 
           {
@@ -376,7 +408,7 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
                     const url = source?.metadata?.url;
 
                     if (url) {
-                      return `<citation href="${url}">${numStr}</citation>`;
+                      return `<citation index="${number}">${number}</citation>`;
                     } else {
                       return ``;
                     }
@@ -447,32 +479,14 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
 
         if (!res.body) throw new Error('No response body');
 
-        const reader = res.body?.getReader();
-        const decoder = new TextDecoder('utf-8');
-
-        let partialChunk = '';
-
+        activeSessionRef.current = lastMsg.backendId;
         const messageHandler = getMessageHandler(lastMsg);
-
         try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-
-            partialChunk += decoder.decode(value, { stream: true });
-
-            try {
-              const messages = partialChunk.split('\n');
-              for (const msg of messages) {
-                if (!msg.trim()) continue;
-                const json = JSON.parse(msg);
-                messageHandler(json);
-              }
-              partialChunk = '';
-            } catch (error) {
-              console.warn('Incomplete JSON, waiting for next chunk...');
-            }
-          }
+          await readJsonLines(res.body, messageHandler);
+        } catch {
+          toast.error(
+            'Connection interrupted. Reload to reconnect to this response.',
+          );
         } finally {
           isReconnectingRef.current = false;
         }
@@ -571,7 +585,19 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
     const messageId = message.messageId;
 
     return async (data: any) => {
+      if (data.type === 'session') {
+        activeSessionRef.current = data.id;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.messageId === messageId ? { ...msg, backendId: data.id } : msg,
+          ),
+        );
+        if (stopRequestedRef.current) await cancelMessage();
+        return;
+      }
       if (data.type === 'error') {
+        activeSessionRef.current = null;
+        setStopping(false);
         toast.error(data.data);
         setLoading(false);
         setMessages((prev) =>
@@ -666,7 +692,7 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
           [
             'assistant',
             currentMsg?.responseBlocks.find((b) => b.type === 'text')?.data ||
-            '',
+              '',
           ],
         ];
 
@@ -675,12 +701,22 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.messageId === messageId
-              ? { ...msg, status: 'completed' as const }
+              ? {
+                  ...msg,
+                  status:
+                    data.status === 'cancelled'
+                      ? ('cancelled' as const)
+                      : ('completed' as const),
+                }
               : msg,
           ),
         );
 
         setLoading(false);
+        setStopping(false);
+        setResearchEnded(true);
+        activeSessionRef.current = null;
+        if (data.status === 'cancelled') return;
 
         const lastMsg = messagesRef.current[messagesRef.current.length - 1];
 
@@ -738,6 +774,9 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
   ) => {
     if (loading || !message) return;
     setLoading(true);
+    setStopping(false);
+    stopRequestedRef.current = false;
+    activeSessionRef.current = null;
     setResearchEnded(false);
     setMessageAppeared(false);
 
@@ -762,65 +801,59 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
 
     const messageIndex = messages.findIndex((m) => m.messageId === messageId);
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content: message,
-        message: {
-          messageId: messageId,
-          chatId: chatId!,
-          content: message,
-        },
-        chatId: chatId!,
-        files: fileIds,
-        sources: sources,
-        optimizationMode: optimizationMode,
-        history: rewrite
-          ? chatHistory.current.slice(
-            0,
-            messageIndex === -1 ? undefined : messageIndex,
-          )
-          : chatHistory.current,
-        chatModel: {
-          key: chatModelProvider.key,
-          providerId: chatModelProvider.providerId,
-        },
-        embeddingModel: {
-          key: embeddingModelProvider.key,
-          providerId: embeddingModelProvider.providerId,
-        },
-        systemInstructions: localStorage.getItem('systemInstructions'),
-      }),
-    });
-
-    if (!res.body) throw new Error('No response body');
-
-    const reader = res.body?.getReader();
-    const decoder = new TextDecoder('utf-8');
-
-    let partialChunk = '';
-
     const messageHandler = getMessageHandler(newMessage);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: message,
+          message: {
+            messageId: messageId,
+            chatId: chatId!,
+            content: message,
+          },
+          chatId: chatId!,
+          files: fileIds,
+          sources: sources,
+          optimizationMode: optimizationMode,
+          history: rewrite
+            ? chatHistory.current.slice(
+                0,
+                messageIndex === -1 ? undefined : messageIndex,
+              )
+            : chatHistory.current,
+          chatModel: {
+            key: chatModelProvider.key,
+            providerId: chatModelProvider.providerId,
+          },
+          embeddingModel: {
+            key: embeddingModelProvider.key,
+            providerId: embeddingModelProvider.providerId,
+          },
+          systemInstructions: localStorage.getItem('systemInstructions'),
+        }),
+      });
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-
-      partialChunk += decoder.decode(value, { stream: true });
-
-      try {
-        const messages = partialChunk.split('\n');
-        for (const msg of messages) {
-          if (!msg.trim()) continue;
-          const json = JSON.parse(msg);
-          messageHandler(json);
-        }
-        partialChunk = '';
-      } catch (error) {
-        console.warn('Incomplete JSON, waiting for next chunk...');
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Chat request failed');
+      }
+      if (!res.body) throw new Error('No response body');
+      await readJsonLines(res.body, messageHandler);
+    } catch (error) {
+      setStopping(false);
+      if (activeSessionRef.current) {
+        toast.error(
+          'Connection interrupted. Reload to reconnect to this response.',
+        );
+      } else {
+        await messageHandler({
+          type: 'error',
+          data: error instanceof Error ? error.message : 'Chat request failed',
+        });
       }
     }
   };
@@ -839,6 +872,8 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
         isMessagesLoaded,
         isReady,
         loading,
+        stopping,
+        cancelMessage,
         messageAppeared,
         notFound,
         optimizationMode,
