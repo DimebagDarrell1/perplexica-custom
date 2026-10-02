@@ -13,6 +13,7 @@ export type SearchAgentConfig = {
   embedding: BaseEmbedding<any>;
   mode: 'speed' | 'balanced' | 'quality';
   systemInstructions: string;
+  useJev?: boolean;
 };
 
 export type SearchAgentInput = {
@@ -68,6 +69,7 @@ export type AdditionalConfig = {
   embedding: BaseEmbedding<any>;
   session: SessionManager;
   mode: SearchAgentConfig['mode'];
+  requireSearchSuccess?: boolean;
 };
 
 export type ResearcherInput = {

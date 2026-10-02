@@ -1,9 +1,15 @@
+import type { JevRerankResult } from '@/lib/jev';
 import { CancellableEmbedding } from '@/lib/models/cancellable';
 import { truncateTokens } from '@/lib/utils/splitText';
 import { abortable } from '@/lib/utils/cancellation';
 import BaseEmbedding from '@/lib/models/base/embedding';
 import { Chunk } from '@/lib/types';
-import { buildFilteredContext, ContextFilterConfig } from './contextFilter';
+import {
+  buildFilteredContext,
+  ContextFilterConfig,
+  type ContextFilterCheckpoint,
+} from './contextFilter';
+import { selectFallbackSnippets } from './fallbackEvidence';
 import type { SearchAgentConfig } from './types';
 import UploadStore from '@/lib/uploads/store';
 import {
@@ -54,15 +60,22 @@ const MODE_CONTEXT_FILTER_CONFIG: Record<
   },
 };
 
-const prepareFallbackChunks = (chunks: Chunk[], limit: number): Chunk[] => {
+const prepareFallbackChunks = (
+  chunks: Chunk[],
+  limit: number,
+  query: string,
+): Chunk[] => {
   const uploads = dedupeEvidenceChunks(
     chunks.filter((chunk) =>
       String(chunk.metadata.url || '').startsWith('file_id://'),
     ),
   );
-  const web = dedupeSearchResults(
-    chunks.filter(
-      (chunk) => !String(chunk.metadata.url || '').startsWith('file_id://'),
+  const web = selectFallbackSnippets(
+    query,
+    dedupeSearchResults(
+      chunks.filter(
+        (chunk) => !String(chunk.metadata.url || '').startsWith('file_id://'),
+      ),
     ),
   );
 
@@ -77,9 +90,8 @@ const prepareFallbackChunks = (chunks: Chunk[], limit: number): Chunk[] => {
 /**
  * Prepare the filtered writer context from search results.
  *
- * Runs the two-stage context pipeline (rank → scrape → select) and falls back
- * to raw snippets when the pipeline throws **or** when it returns zero chunks
- * despite having received search findings.
+ * Retain completed ranking and page reads when context processing times out.
+ * Use snippet recovery only when no completed stage is available.
  */
 export const prepareWriterContext = async (
   searchFindings: Chunk[] | undefined,
@@ -89,14 +101,34 @@ export const prepareWriterContext = async (
   mode: SearchAgentConfig['mode'],
   signal?: AbortSignal,
   hasUploadedFiles = false,
+  useJev = true,
 ): Promise<Chunk[]> => {
   signal?.throwIfAborted();
   let filteredChunks = searchFindings || [];
+  let reranking: JevRerankResult | undefined;
+  let contextFallback = false;
+  let recoveryReason: 'timeout' | 'failure' | 'empty' | undefined;
+  let checkpoint: ContextFilterCheckpoint | undefined;
+  let progressOpen = true;
   const contextFilterConfig = {
     ...MODE_CONTEXT_FILTER_CONFIG[mode],
-    useJev: mode !== 'speed' && !hasUploadedFiles,
+    useJev: useJev && mode !== 'speed' && !hasUploadedFiles,
+    onJevResult: (result: JevRerankResult) => {
+      reranking = result;
+    },
+    onProgress: (progress: ContextFilterCheckpoint) => {
+      if (progressOpen && progress.chunks.length) checkpoint = progress;
+    },
   };
   const fallbackLimit = MODE_SEARCH_LIMITS[mode].fallbackContextChunks;
+  const recoverEvidence = () =>
+    checkpoint?.chunks.length
+      ? checkpoint.chunks
+      : prepareFallbackChunks(
+          searchFindings || [],
+          fallbackLimit,
+          standaloneFollowUp?.trim() || followUp,
+        );
 
   if (filteredChunks.length > 0) {
     const controller = new AbortController();
@@ -122,27 +154,29 @@ export const prepareWriterContext = async (
         new Promise<Chunk[]>((resolve) => {
           timeoutId = setTimeout(
             () => {
+              contextFallback = true;
+              recoveryReason = 'timeout';
+              progressOpen = false;
+              resolve(recoverEvidence());
               controller.abort();
-              resolve(
-                prepareFallbackChunks(searchFindings || [], fallbackLimit),
-              );
             },
             mode === 'speed' ? 15_000 : PIPELINE_TIMEOUT_MS,
           );
         }),
       ]);
     } catch (err) {
+      contextFallback = true;
+      recoveryReason ||= 'failure';
+      progressOpen = false;
       controller.abort();
       signal?.throwIfAborted();
       console.error(
-        '[prepareWriterContext] Context filter pipeline failed, falling back to raw snippets:',
+        '[prepareWriterContext] Context processing stopped; retaining available evidence:',
         err,
       );
-      filteredChunks = prepareFallbackChunks(
-        searchFindings || [],
-        fallbackLimit,
-      );
+      filteredChunks = recoverEvidence();
     } finally {
+      progressOpen = false;
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
@@ -155,10 +189,12 @@ export const prepareWriterContext = async (
       searchFindings &&
       searchFindings.length > 0
     ) {
+      contextFallback = true;
+      recoveryReason = 'empty';
       console.warn(
-        '[prepareWriterContext] Pipeline returned 0 chunks, falling back to raw snippets',
+        '[prepareWriterContext] Pipeline returned no evidence; using recovery evidence',
       );
-      filteredChunks = prepareFallbackChunks(searchFindings, fallbackLimit);
+      filteredChunks = recoverEvidence();
     }
   }
 
@@ -169,9 +205,52 @@ export const prepareWriterContext = async (
       contextFilterConfig.topKChunks,
     ),
   );
+  if (contextFallback) {
+    console.log(
+      JSON.stringify({
+        event: 'research_context_recovery',
+        reason: recoveryReason,
+        stage: checkpoint?.stage || 'unranked',
+        contextMode: checkpoint?.contextMode || 'snippets',
+        citationSources: evidence.length,
+        completedPageSources: evidence.filter(
+          (chunk) => chunk.metadata.extractionProvider,
+        ).length,
+        jevRetained: checkpoint?.jevUsed === true,
+      }),
+    );
+  }
   const tokenBudget = { speed: 8000, balanced: 16000, quality: 32000 }[mode];
   return evidence.map((chunk) => ({
     ...chunk,
+    metadata: {
+      ...chunk.metadata,
+      contextMode:
+        checkpoint?.contextMode || (contextFallback ? 'snippets' : 'filtered'),
+      contextRecovery: contextFallback
+        ? checkpoint?.stage || 'unranked'
+        : undefined,
+      jev: {
+        requested: useJev,
+        status: !useJev
+          ? 'off'
+          : hasUploadedFiles
+            ? 'skipped'
+            : mode === 'speed'
+              ? 'skipped'
+              : reranking?.status || 'not-run',
+        reason: hasUploadedFiles
+          ? 'uploaded_files'
+          : mode === 'speed'
+            ? 'speed_mode'
+            : reranking?.reason,
+        used:
+          reranking?.status === 'applied' &&
+          (!contextFallback || checkpoint?.jevUsed === true),
+        candidateCount: reranking?.candidateCount || 0,
+        durationMs: reranking?.durationMs || 0,
+      },
+    },
     content: truncateTokens(
       chunk.content,
       Math.floor(tokenBudget / evidence.length),

@@ -37,6 +37,7 @@ const bodySchema = z.object({
   optimizationMode: z.enum(['speed', 'balanced', 'quality'], {
     message: 'Optimization mode must be one of: speed, balanced, quality',
   }),
+  useJev: z.boolean().optional(),
   sources: z.array(z.string()).optional().default([]),
   history: z
     .array(z.tuple([z.string(), z.string()]))
@@ -197,6 +198,7 @@ export const POST = async (req: Request) => {
         embedding: embedding,
         sources: body.sources as SearchSources[],
         mode: body.optimizationMode,
+        useJev: body.useJev,
         fileIds: body.files,
         systemInstructions: body.systemInstructions || 'None',
       },

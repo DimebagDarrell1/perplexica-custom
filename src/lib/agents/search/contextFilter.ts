@@ -1,7 +1,13 @@
-import { getJevConfig, rerankWithJev } from '@/lib/jev';
+import { getJevConfig, rerankWithJev, type JevRerankResult } from '@/lib/jev';
+import configManager from '@/lib/config';
 import BaseEmbedding from '@/lib/models/base/embedding';
 import computeSimilarity from '@/lib/utils/computeSimilarity';
 import { splitText } from '@/lib/utils/splitText';
+import { abortable } from '@/lib/utils/cancellation';
+import {
+  selectFallbackSnippets,
+  selectPassagesForEmbedding,
+} from './fallbackEvidence';
 import type { Chunk } from '@/lib/types';
 import Scraper from '@/lib/scraper';
 import {
@@ -17,6 +23,22 @@ const throwIfAborted = (signal?: AbortSignal) => {
   }
 };
 
+export type ContextFilterCheckpoint = {
+  chunks: Chunk[];
+  contextMode: 'snippets' | 'partial' | 'filtered';
+  jevUsed: boolean;
+  stage: 'ranked' | 'reranked' | 'scraped' | 'selected';
+};
+
+type ScrapedPage = {
+  url: string;
+  sourceUrl?: string;
+  title: string;
+  content: string;
+  provider: string;
+  cached: boolean;
+};
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -27,6 +49,8 @@ const throwIfAborted = (signal?: AbortSignal) => {
 export type ContextFilterConfig = {
   /** Optional web-only reranking before selecting pages to read. */
   useJev: boolean;
+  onJevResult?: (result: JevRerankResult) => void;
+  onProgress?: (checkpoint: ContextFilterCheckpoint) => void;
   /** Maximum number of URLs to scrape after relevance ranking (default: 10) */
   topKUrls: number;
   /** Maximum number of relevant chunks to select from all scraped content (default: 30) */
@@ -121,15 +145,8 @@ export const scrapeRelevantUrls = async (
   maxPageLength: number,
   preferFirecrawl: boolean,
   signal?: AbortSignal,
-): Promise<
-  {
-    url: string;
-    title: string;
-    content: string;
-    provider: string;
-    cached: boolean;
-  }[]
-> => {
+  onPage?: (page: ScrapedPage) => void,
+): Promise<ScrapedPage[]> => {
   const CONCURRENCY_LIMIT = 5;
 
   const truncateContent = (content: string) =>
@@ -146,13 +163,7 @@ export const scrapeRelevantUrls = async (
     ),
   ];
 
-  const results: {
-    url: string;
-    title: string;
-    content: string;
-    provider: string;
-    cached: boolean;
-  }[] = [];
+  const results: ScrapedPage[] = [];
 
   // Process URLs in batches to avoid overwhelming the network
   for (let i = 0; i < urls.length; i += CONCURRENCY_LIMIT) {
@@ -164,19 +175,21 @@ export const scrapeRelevantUrls = async (
       batch.map(async (url) => {
         try {
           throwIfAborted(signal);
-          const scraped = await Scraper.scrape(url, {
-            preferFirecrawl,
-            signal,
-          });
-
-          return {
+          const scrape = () => Scraper.scrape(url, { preferFirecrawl, signal });
+          const scraped = await (signal ? abortable(scrape, signal) : scrape());
+          throwIfAborted(signal);
+          const page = {
             url: scraped.url,
+            sourceUrl: url,
             title: scraped.title,
             content: truncateContent(scraped.content),
             provider: scraped.provider,
             cached: scraped.cached === true,
           };
+          onPage?.(page);
+          return page;
         } catch {
+          throwIfAborted(signal);
           return null;
         }
       }),
@@ -189,6 +202,7 @@ export const scrapeRelevantUrls = async (
     }
   }
 
+  throwIfAborted(signal);
   return results;
 };
 
@@ -208,13 +222,7 @@ export const scrapeRelevantUrls = async (
 export const selectRelevantChunks = async (
   query: string,
   standaloneFollowUp: string | undefined,
-  scrapedPages: {
-    url: string;
-    title: string;
-    content: string;
-    provider: string;
-    cached: boolean;
-  }[],
+  scrapedPages: ScrapedPage[],
   embeddingModel: BaseEmbedding<any>,
   config: ContextFilterConfig,
   queryEmbedding?: number[],
@@ -232,11 +240,15 @@ export const selectRelevantChunks = async (
     cached: boolean;
   }[] = [];
 
+  const maxChunksPerPage = Math.max(
+    2,
+    Math.ceil((config.topKChunks * 2) / scrapedPages.length),
+  );
   scrapedPages.forEach((page) => {
-    const chunks = splitText(
-      page.content,
-      config.chunkMaxTokens,
-      config.chunkOverlapTokens,
+    const chunks = selectPassagesForEmbedding(
+      standaloneFollowUp || query,
+      splitText(page.content, config.chunkMaxTokens, config.chunkOverlapTokens),
+      maxChunksPerPage,
     );
 
     chunks.forEach((chunkText) => {
@@ -391,6 +403,7 @@ export const buildFilteredContext = async (
 ): Promise<Chunk[]> => {
   const fullConfig = { ...DEFAULT_CONFIG, ...config };
   const startedAt = Date.now();
+  const effectiveQuery = standaloneFollowUp?.trim() || query;
 
   if (searchFindings.length === 0) return [];
   throwIfAborted(signal);
@@ -414,8 +427,8 @@ export const buildFilteredContext = async (
     );
 
     selectedUploadChunks = await selectRelevantExistingChunks(
-      query,
-      standaloneFollowUp,
+      effectiveQuery,
+      undefined,
       uploadedFileFindings,
       embeddingModel,
       uploadChunkBudget,
@@ -438,26 +451,48 @@ export const buildFilteredContext = async (
   );
 
   const useJev = fullConfig.useJev && uploadedFileFindings.length === 0;
-  const jevConfig = getJevConfig();
+  const jevConfig = getJevConfig(configManager.getConfig('search', {}));
   const shortlistSize =
     useJev && jevConfig.enabled && jevConfig.configured
       ? Math.max(fullConfig.topKUrls, jevConfig.maxCandidates)
       : fullConfig.topKUrls;
   const { rankedResults: shortlist, queryEmbedding } =
     await rankResultsByRelevance(
-      query,
+      effectiveQuery,
       candidateWebFindings,
       embeddingModel,
       shortlistSize,
     );
   throwIfAborted(signal);
+  const publishSnippets = (
+    results: { chunk: Chunk; score: number }[],
+    jevUsed: boolean,
+  ) => {
+    fullConfig.onProgress?.({
+      chunks: groupEvidenceBySource([
+        ...selectedUploadChunks,
+        ...selectFallbackSnippets(
+          effectiveQuery,
+          results.slice(0, fullConfig.topKUrls).map((result) => result.chunk),
+          true,
+        ),
+      ]),
+      contextMode: 'snippets',
+      jevUsed,
+      stage: jevUsed ? 'reranked' : 'ranked',
+    });
+  };
+  publishSnippets(shortlist, false);
   const reranking = useJev
-    ? await rerankWithJev(standaloneFollowUp || query, shortlist, signal)
+    ? await rerankWithJev(effectiveQuery, shortlist, signal, jevConfig)
     : undefined;
+  if (reranking) fullConfig.onJevResult?.(reranking);
   const rankedResults = (reranking?.results || shortlist).slice(
     0,
     fullConfig.topKUrls,
   );
+  const jevUsed = reranking?.status === 'applied';
+  publishSnippets(rankedResults, jevUsed);
   if (reranking && reranking.status !== 'disabled') {
     console.log(
       JSON.stringify({
@@ -478,11 +513,50 @@ export const buildFilteredContext = async (
   );
 
   // Stage 2: Scrape the top-ranked URLs
+  const completedPages = new Map<string, ScrapedPage>();
   const scrapedPages = await scrapeRelevantUrls(
     rankedResults,
     fullConfig.maxPageLength,
     fullConfig.preferFirecrawl,
     signal,
+    (page) => {
+      completedPages.set(page.sourceUrl || page.url, page);
+      const completedEvidence = rankedResults.map(({ chunk }) => {
+        const read = completedPages.get(String(chunk.metadata.url));
+        return read
+          ? {
+              content: selectPassagesForEmbedding(
+                effectiveQuery,
+                read.content.match(/[\s\S]{1,1500}/g) || [],
+                8,
+              ).join('\n\n'),
+              metadata: {
+                ...chunk.metadata,
+                title: read.title,
+                url: read.url,
+                extractionProvider: read.provider,
+                extractionCached: read.cached,
+              },
+            }
+          : chunk;
+      });
+      const readEvidence = completedEvidence.filter(
+        (chunk) => chunk.metadata.extractionProvider,
+      );
+      const unreadEvidence = completedEvidence.filter(
+        (chunk) => !chunk.metadata.extractionProvider,
+      );
+      fullConfig.onProgress?.({
+        chunks: groupEvidenceBySource([
+          ...selectedUploadChunks,
+          ...readEvidence,
+          ...selectFallbackSnippets(effectiveQuery, unreadEvidence, true),
+        ]),
+        contextMode: 'partial',
+        jevUsed,
+        stage: 'scraped',
+      });
+    },
   );
   throwIfAborted(signal);
 
@@ -493,8 +567,8 @@ export const buildFilteredContext = async (
   // Stage 3: Select the most relevant chunks from scraped content
   // Pass the pre-computed query embedding to avoid a redundant embedding call.
   const selectedChunks = await selectRelevantChunks(
-    query,
-    standaloneFollowUp,
+    effectiveQuery,
+    undefined,
     scrapedPages,
     embeddingModel,
     fullConfig,
@@ -507,10 +581,17 @@ export const buildFilteredContext = async (
   );
 
   // Failed deep reads still contribute their search snippets alongside uploads.
-  const readUrls = new Set(selectedChunks.map((chunk) => chunk.metadata.url));
-  const fallbackSnippets = rankedResults
-    .map((result) => result.chunk)
-    .filter((chunk) => !readUrls.has(chunk.metadata.url));
+  const readUrls = new Set([
+    ...selectedChunks.map((chunk) => chunk.metadata.url),
+    ...scrapedPages.map((page) => page.sourceUrl),
+  ]);
+  const fallbackSnippets = selectFallbackSnippets(
+    effectiveQuery,
+    rankedResults
+      .map((result) => result.chunk)
+      .filter((chunk) => !readUrls.has(chunk.metadata.url)),
+    true,
+  );
   const webBudget = Math.max(
     0,
     fullConfig.topKChunks - selectedUploadChunks.length,
@@ -535,6 +616,12 @@ export const buildFilteredContext = async (
     fullConfig.topKChunks,
   );
   const groupedEvidence = groupEvidenceBySource(selectedEvidence);
+  fullConfig.onProgress?.({
+    chunks: groupedEvidence,
+    contextMode: selectedChunks.length ? 'filtered' : 'snippets',
+    jevUsed,
+    stage: 'selected',
+  });
   const providerCounts = scrapedPages.reduce<Record<string, number>>(
     (counts, page) => {
       counts[page.provider] = (counts[page.provider] || 0) + 1;

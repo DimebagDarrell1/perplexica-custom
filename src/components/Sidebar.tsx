@@ -1,34 +1,27 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import {
-  BookOpenText,
-  Home,
-  Search,
-  SquarePen,
-  Settings,
-  Plus,
-  ArrowLeft,
-} from 'lucide-react';
+import { BookOpenText, Home, Search, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useSelectedLayoutSegments } from 'next/navigation';
-import React, { useState, type ReactNode } from 'react';
+import React, { type ReactNode } from 'react';
 import Layout from './Layout';
-import {
-  Description,
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-} from '@headlessui/react';
 import SettingsButton from './Settings/SettingsButton';
+import BuildLabel from './BuildLabel';
 
 const VerticalIconContainer = ({ children }: { children: ReactNode }) => {
-  return <div className="flex flex-col items-center w-full">{children}</div>;
+  return (
+    <nav
+      aria-label="Main navigation"
+      className="flex flex-col items-center w-full"
+    >
+      {children}
+    </nav>
+  );
 };
 
 const Sidebar = ({ children }: { children: React.ReactNode }) => {
   const segments = useSelectedLayoutSegments();
-  const [isOpen, setIsOpen] = useState<boolean>(true);
 
   const navLinks = [
     {
@@ -58,7 +51,9 @@ const Sidebar = ({ children }: { children: React.ReactNode }) => {
           {/* A new chat needs a full reload to reset the shared chat provider. */}
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a
-            className="p-2.5 rounded-full bg-light-200 text-black/70 dark:bg-dark-200 dark:text-white/70 hover:opacity-70 hover:scale-105 tansition duration-200"
+            aria-label="New chat"
+            title="New chat"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-accent text-white hover:opacity-90 transition duration-200"
             href="/"
           >
             <Plus size={19} className="cursor-pointer" />
@@ -68,16 +63,17 @@ const Sidebar = ({ children }: { children: React.ReactNode }) => {
               <Link
                 key={i}
                 href={link.href}
+                aria-current={link.active ? 'page' : undefined}
                 className={cn(
                   'relative flex flex-col items-center justify-center space-y-0.5 cursor-pointer w-full py-2 rounded-lg',
                   link.active
-                    ? 'text-black/70 dark:text-white/70 '
+                    ? 'text-accent dark:text-accent-dark'
                     : 'text-black/60 dark:text-white/60',
                 )}
               >
                 <div
                   className={cn(
-                    link.active && 'bg-light-200 dark:bg-dark-200',
+                    link.active && 'bg-accent/10 dark:bg-accent-dark/10',
                     'group rounded-lg hover:bg-light-200 hover:dark:bg-dark-200 transition duration-200',
                   )}
                 >
@@ -92,7 +88,7 @@ const Sidebar = ({ children }: { children: React.ReactNode }) => {
                 <p
                   className={cn(
                     link.active
-                      ? 'text-black/80 dark:text-white/80'
+                      ? 'text-accent dark:text-accent-dark'
                       : 'text-black/60 dark:text-white/60',
                     'text-[10px]',
                   )}
@@ -103,30 +99,37 @@ const Sidebar = ({ children }: { children: React.ReactNode }) => {
             ))}
           </VerticalIconContainer>
 
-          <SettingsButton />
+          <div className="flex flex-col items-center gap-3">
+            <SettingsButton />
+            <BuildLabel compact />
+          </div>
         </div>
       </div>
 
-      <div className="fixed bottom-0 w-full z-50 flex flex-row items-center gap-x-6 bg-light-secondary dark:bg-dark-secondary px-4 py-4 shadow-sm lg:hidden">
+      <nav
+        aria-label="Main navigation"
+        className="fixed bottom-0 w-full z-50 flex flex-row items-center gap-x-6 bg-light-secondary dark:bg-dark-secondary px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-light-200 dark:border-dark-200 lg:hidden"
+      >
         {navLinks.map((link, i) => (
           <Link
             href={link.href}
+            aria-current={link.active ? 'page' : undefined}
             key={i}
             className={cn(
-              'relative flex flex-col items-center space-y-1 text-center w-full',
+              'relative flex flex-col items-center justify-center min-h-11 space-y-1 text-center w-full',
               link.active
-                ? 'text-black dark:text-white'
+                ? 'text-accent dark:text-accent-dark'
                 : 'text-black dark:text-white/70',
             )}
           >
             {link.active && (
-              <div className="absolute top-0 -mt-4 h-1 w-full rounded-b-lg bg-black dark:bg-white" />
+              <div className="absolute top-0 -mt-4 h-1 w-full rounded-b-lg bg-accent dark:bg-accent-dark" />
             )}
             <link.icon />
             <p className="text-xs">{link.label}</p>
           </Link>
         ))}
-      </div>
+      </nav>
 
       <Layout>{children}</Layout>
     </div>

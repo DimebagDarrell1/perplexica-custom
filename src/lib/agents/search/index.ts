@@ -1,6 +1,6 @@
 import { abortable } from '@/lib/utils/cancellation';
 import { CancellableLLM, CancellableEmbedding } from '@/lib/models/cancellable';
-import { ResearcherOutput, SearchAgentInput } from './types';
+import { SearchAgentInput } from './types';
 import SessionManager from '@/lib/session';
 import { classify } from './classifier';
 import Researcher from './researcher';
@@ -23,6 +23,9 @@ class SearchAgent {
       ...input,
       config: {
         ...input.config,
+        sources: input.config.sources.includes('web')
+          ? input.config.sources
+          : [...input.config.sources, 'web'],
         llm: new CancellableLLM(input.config.llm, session.signal),
         embedding: new CancellableEmbedding(
           input.config.embedding,
@@ -98,22 +101,22 @@ class SearchAgent {
         return widgetOutputs;
       });
 
-      let searchPromise: Promise<ResearcherOutput> | null = null;
-
-      if (!classification.classification.skipSearch) {
-        const researcher = new Researcher();
-        searchPromise = researcher.research(session, {
-          chatHistory: input.chatHistory,
-          followUp: input.followUp,
-          classification: classification,
-          config: input.config,
-        });
-      }
-
-      const [widgetOutputs, searchResults] = await abortable(
-        () => Promise.all([widgetPromise, searchPromise]),
+      const researcher = new Researcher();
+      const searchPromise = abortable(
+        () =>
+          researcher.research(session, {
+            chatHistory: input.chatHistory,
+            followUp: input.followUp,
+            classification,
+            config: input.config,
+          }),
         session.signal,
       );
+
+      const [widgetOutputs, searchResults] = await Promise.all([
+        widgetPromise,
+        searchPromise,
+      ]);
 
       // --- Two-stage context pipeline ---
       // Rank -> scrape top URLs -> select relevant chunks
@@ -125,6 +128,7 @@ class SearchAgent {
         input.config.mode,
         session.signal,
         input.config.fileIds.length > 0,
+        input.config.useJev !== false,
       );
 
       if (searchResults?.sourceBlockId) {

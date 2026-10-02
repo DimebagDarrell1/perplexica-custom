@@ -127,6 +127,12 @@ const webSearchAction: ResearchAction<typeof actionSchema> = {
       } catch (error) {
         additionalConfig.session.signal.throwIfAborted();
         console.error(`SearXNG search failed for query "${q}":`, error);
+        if (additionalConfig.requireSearchSuccess) {
+          throw new Error(
+            'The required web search failed. Check SearXNG and try again.',
+            { cause: error },
+          );
+        }
         return;
       }
 
@@ -195,6 +201,25 @@ const webSearchAction: ResearchAction<typeof actionSchema> = {
     };
 
     await Promise.all(input.queries.map(search));
+
+    if (
+      additionalConfig.requireSearchSuccess &&
+      !searchResultsEmitted &&
+      researchBlock?.type === 'research'
+    ) {
+      researchBlock.data.subSteps.push({
+        id: searchResultsBlockId,
+        type: 'search_results',
+        reading: [],
+      });
+      additionalConfig.session.updateBlock(additionalConfig.researchBlockId, [
+        {
+          op: 'replace',
+          path: '/data/subSteps',
+          value: researchBlock.data.subSteps,
+        },
+      ]);
+    }
 
     return {
       type: 'search_results',

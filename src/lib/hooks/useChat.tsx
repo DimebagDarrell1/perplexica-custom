@@ -38,6 +38,8 @@ type ChatContext = {
   sources: string[];
   chatId: string | undefined;
   optimizationMode: string;
+  useJev: boolean;
+  setUseJev: (enabled: boolean) => void;
   isMessagesLoaded: boolean;
   loading: boolean;
   stopping: boolean;
@@ -261,6 +263,8 @@ export const chatContext = createContext<ChatContext>({
   sections: [],
   notFound: false,
   optimizationMode: '',
+  useJev: false,
+  setUseJev: () => {},
   chatModelProvider: { key: '', providerId: '' },
   embeddingModelProvider: { key: '', providerId: '' },
   researchEnded: false,
@@ -321,6 +325,7 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
 
   const [sources, setSources] = useState<string[]>(['web']);
   const [optimizationMode, setOptimizationMode] = useState('speed');
+  const [useJev, setUseJev] = useState(false);
 
   const [isMessagesLoaded, setIsMessagesLoaded] = useState(false);
 
@@ -819,6 +824,8 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
           files: fileIds,
           sources: sources,
           optimizationMode: optimizationMode,
+          useJev:
+            useJev && optimizationMode !== 'speed' && fileIds.length === 0,
           history: rewrite
             ? chatHistory.current.slice(
                 0,
@@ -877,6 +884,8 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
         messageAppeared,
         notFound,
         optimizationMode,
+        useJev,
+        setUseJev,
         setFileIds,
         setFiles,
         setSources,

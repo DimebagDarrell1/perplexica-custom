@@ -13,6 +13,32 @@ import { Chunk } from '@/lib/types';
 
 const MessageSources = ({ sources }: { sources: Chunk[] }) => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const jev = sources[0]?.metadata.jev;
+  const contextMode = sources[0]?.metadata.contextMode;
+  const contextLabel =
+    contextMode === 'partial'
+      ? 'Using available page text and search snippets. '
+      : contextMode === 'snippets'
+        ? 'Using search snippets. '
+        : '';
+  const recovered = !!sources[0]?.metadata.contextRecovery;
+  const rankingLabel = !jev
+    ? undefined
+    : jev.used
+      ? `Jev ranked ${jev.candidateCount} candidates in ${(jev.durationMs / 1000).toFixed(1)}s${recovered ? '; ranking retained' : ''}`
+      : jev.status === 'off'
+        ? 'Jev off'
+        : jev.status === 'applied'
+          ? 'Jev ranked candidates; its ordering did not reach the answer'
+          : jev.reason === 'speed_mode'
+            ? 'Jev skipped in Speed mode'
+            : jev.reason === 'uploaded_files'
+              ? 'Jev skipped for uploaded files'
+              : jev.status === 'disabled'
+                ? 'Jev disabled on the server'
+                : jev.status === 'fallback'
+                  ? 'Jev unavailable; standard ranking used'
+                  : 'Jev was not used';
 
   const closeModal = () => {
     setIsDialogOpen(false);
@@ -26,6 +52,15 @@ const MessageSources = ({ sources }: { sources: Chunk[] }) => {
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+      {(rankingLabel || contextLabel) && (
+        <p
+          className="col-span-full text-xs text-black/70 dark:text-white/70"
+          role="status"
+        >
+          {contextLabel}
+          {rankingLabel}
+        </p>
+      )}
       {sources.slice(0, 3).map((source, i) => (
         <a
           className="bg-light-100 hover:bg-light-200 dark:bg-dark-100 dark:hover:bg-dark-200 transition duration-200 rounded-lg p-3 flex flex-col space-y-2 font-medium"

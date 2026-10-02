@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import AttachSmall from './MessageInputActions/AttachSmall';
 import { useChat } from '@/lib/hooks/useChat';
+import JevToggle from './MessageInputActions/JevToggle';
 
 const MessageInput = () => {
   const { loading, stopping, cancelMessage, sendMessage } = useChat();
@@ -46,67 +47,48 @@ const MessageInput = () => {
   }, []);
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (loading) return;
-        sendMessage(message);
-        setMessage('');
-      }}
-      onKeyDown={(e) => {
-        if (
-          e.key === 'Enter' &&
-          !e.shiftKey &&
-          !e.nativeEvent.isComposing &&
-          e.keyCode !== 229 &&
-          !loading &&
-          e.target instanceof HTMLTextAreaElement
-        ) {
+    <>
+      <div className="mb-2 rounded-lg bg-light-primary dark:bg-dark-primary px-2">
+        <JevToggle />
+      </div>
+      <form
+        onSubmit={(e) => {
           e.preventDefault();
+          if (loading) return;
           sendMessage(message);
           setMessage('');
-        }
-      }}
-      className={cn(
-        'relative bg-light-secondary dark:bg-dark-secondary p-4 flex items-center overflow-visible border border-light-200 dark:border-dark-200 shadow-sm shadow-light-200/10 dark:shadow-black/20 transition-all duration-200 focus-within:border-light-300 dark:focus-within:border-dark-300',
-        mode === 'multi' ? 'flex-col rounded-2xl' : 'flex-row rounded-full',
-      )}
-    >
-      {mode === 'single' && <AttachSmall />}
-      <TextareaAutosize
-        ref={inputRef}
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onHeightChange={(height, props) => {
-          setTextareaRows(Math.ceil(height / props.rowHeight));
         }}
-        className="transition bg-transparent dark:placeholder:text-white/50 placeholder:text-sm text-sm dark:text-white resize-none focus:outline-none w-full px-2 max-h-24 lg:max-h-36 xl:max-h-48 flex-grow flex-shrink"
-        placeholder="Ask a follow-up"
-      />
-      {mode === 'single' && (
-        <button
-          type={loading ? 'button' : 'submit'}
-          aria-label={
-            loading
-              ? stopping
-                ? 'Stopping response'
-                : 'Stop response'
-              : 'Send message'
+        onKeyDown={(e) => {
+          if (
+            e.key === 'Enter' &&
+            !e.shiftKey &&
+            !e.nativeEvent.isComposing &&
+            e.keyCode !== 229 &&
+            !loading &&
+            e.target instanceof HTMLTextAreaElement
+          ) {
+            e.preventDefault();
+            sendMessage(message);
+            setMessage('');
           }
-          onClick={loading ? () => void cancelMessage() : undefined}
-          disabled={loading ? stopping : message.trim().length === 0}
-          className="bg-[#24A0ED] text-white disabled:text-black/50 dark:disabled:text-white/50 hover:bg-opacity-85 transition duration-100 disabled:bg-[#e0e0dc79] dark:disabled:bg-[#ececec21] rounded-full p-2"
-        >
-          {loading ? (
-            <Square size={17} fill="currentColor" />
-          ) : (
-            <ArrowUp className="bg-background" size={17} />
-          )}
-        </button>
-      )}
-      {mode === 'multi' && (
-        <div className="flex flex-row items-center justify-between w-full pt-2">
-          <AttachSmall />
+        }}
+        className={cn(
+          'research-composer relative bg-light-secondary dark:bg-dark-secondary p-4 flex items-center overflow-visible border border-light-200 dark:border-dark-200 shadow-sm shadow-light-200/10 dark:shadow-black/20 transition-all duration-200 focus-within:border-light-300 dark:focus-within:border-dark-300',
+          mode === 'multi' ? 'flex-col rounded-2xl' : 'flex-row rounded-full',
+        )}
+      >
+        {mode === 'single' && <AttachSmall />}
+        <TextareaAutosize
+          ref={inputRef}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onHeightChange={(height, props) => {
+            setTextareaRows(Math.ceil(height / props.rowHeight));
+          }}
+          className="transition bg-transparent dark:placeholder:text-white/50 placeholder:text-sm text-sm dark:text-white resize-none focus:outline-none w-full px-2 max-h-24 lg:max-h-36 xl:max-h-48 flex-grow flex-shrink"
+          placeholder="Ask a follow-up"
+        />
+        {mode === 'single' && (
           <button
             type={loading ? 'button' : 'submit'}
             aria-label={
@@ -118,7 +100,7 @@ const MessageInput = () => {
             }
             onClick={loading ? () => void cancelMessage() : undefined}
             disabled={loading ? stopping : message.trim().length === 0}
-            className="bg-[#24A0ED] text-white disabled:text-black/50 dark:disabled:text-white/50 hover:bg-opacity-85 transition duration-100 disabled:bg-[#e0e0dc79] dark:disabled:bg-[#ececec21] rounded-full p-2"
+            className="bg-accent text-white disabled:text-black/50 dark:disabled:text-white/50 hover:bg-opacity-85 transition duration-100 disabled:bg-[#e0e0dc79] dark:disabled:bg-[#ececec21] rounded-full min-h-11 min-w-11 flex items-center justify-center p-2"
           >
             {loading ? (
               <Square size={17} fill="currentColor" />
@@ -126,9 +108,33 @@ const MessageInput = () => {
               <ArrowUp className="bg-background" size={17} />
             )}
           </button>
-        </div>
-      )}
-    </form>
+        )}
+        {mode === 'multi' && (
+          <div className="flex flex-row items-center justify-between w-full pt-2">
+            <AttachSmall />
+            <button
+              type={loading ? 'button' : 'submit'}
+              aria-label={
+                loading
+                  ? stopping
+                    ? 'Stopping response'
+                    : 'Stop response'
+                  : 'Send message'
+              }
+              onClick={loading ? () => void cancelMessage() : undefined}
+              disabled={loading ? stopping : message.trim().length === 0}
+              className="bg-accent text-white disabled:text-black/50 dark:disabled:text-white/50 hover:bg-opacity-85 transition duration-100 disabled:bg-[#e0e0dc79] dark:disabled:bg-[#ececec21] rounded-full min-h-11 min-w-11 flex items-center justify-center p-2"
+            >
+              {loading ? (
+                <Square size={17} fill="currentColor" />
+              ) : (
+                <ArrowUp className="bg-background" size={17} />
+              )}
+            </button>
+          </div>
+        )}
+      </form>
+    </>
   );
 };
 

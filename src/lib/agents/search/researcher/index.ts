@@ -12,6 +12,23 @@ class Researcher {
     session: SessionManager,
     input: ResearcherInput,
   ): Promise<ResearcherOutput> {
+    session.signal.throwIfAborted();
+    input = {
+      ...input,
+      classification: {
+        ...input.classification,
+        classification: {
+          ...input.classification.classification,
+          skipSearch: false,
+        },
+      },
+      config: {
+        ...input.config,
+        sources: input.config.sources.includes('web')
+          ? input.config.sources
+          : [...input.config.sources, 'web'],
+      },
+    };
     let actionOutput: ActionOutput[] = [];
     let maxIteration =
       input.config.mode === 'speed'
@@ -56,6 +73,42 @@ class Researcher {
         `,
       },
     ];
+
+    const webToolCall: ToolCall = {
+      id: crypto.randomUUID(),
+      name: 'web_search',
+      arguments: {
+        queries: [
+          input.classification.standaloneFollowUp?.trim() || input.followUp,
+        ],
+      },
+    };
+    agentMessageHistory.push({
+      role: 'assistant',
+      content: null,
+      tool_calls: [webToolCall],
+    });
+    const webAction = await ActionRegistry.execute(
+      webToolCall.name,
+      webToolCall.arguments,
+      {
+        llm: input.config.llm,
+        embedding: input.config.embedding,
+        session,
+        mode: input.config.mode,
+        researchBlockId,
+        fileIds: input.config.fileIds,
+        requireSearchSuccess: true,
+      },
+    );
+    session.signal.throwIfAborted();
+    actionOutput.push(webAction);
+    agentMessageHistory.push({
+      role: 'tool',
+      id: webToolCall.id,
+      name: webToolCall.name,
+      content: JSON.stringify(webAction),
+    });
 
     if (input.config.fileIds.length > 0) {
       const uploadQueries = Array.from(
@@ -109,7 +162,9 @@ class Researcher {
       }
     }
 
-    for (let i = 0; i < maxIteration; i++) {
+    // The required first web search uses one research iteration.
+    for (let i = 1; i < maxIteration; i++) {
+      session.signal.throwIfAborted();
       const researcherPrompt = getResearcherPrompt(
         availableActionsDescription,
         input.config.mode,

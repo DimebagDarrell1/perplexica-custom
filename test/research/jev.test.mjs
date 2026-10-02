@@ -353,6 +353,10 @@ test('the actual context pipeline reranks before scraping and retains the same c
       const { buildFilteredContext } = loadTs(
         'src/lib/agents/search/contextFilter.ts',
         {
+          '@/lib/config': {
+            __esModule: true,
+            default: { getConfig: (_key, fallback) => fallback },
+          },
           '@/lib/scraper': {
             __esModule: true,
             default: {
@@ -482,6 +486,10 @@ test('local URLs and already-extracted pages are excluded from the outbound shor
 test('health route exposes Jev configuration without adding an inference request', async () => {
   await withConfig({}, noFetch, async () => {
     const { GET } = loadTs('src/app/api/health/research/route.ts', {
+      '@/lib/config': {
+        __esModule: true,
+        default: { getConfig: (_key, fallback) => fallback },
+      },
       '@/lib/config/security': { requireAdminToken: () => undefined },
       '@/lib/firecrawl': {
         checkFirecrawlHealth: async () => ({ enabled: false }),

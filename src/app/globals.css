@@ -78,6 +78,47 @@
   html {
     scroll-behavior: smooth;
   }
+
+  ::selection {
+    background: #176e68;
+    color: #ffffff;
+  }
+
+  :where(a, button, input, textarea, select):focus-visible {
+    outline: 2px solid #176e68;
+    outline-offset: 3px;
+  }
+
+  html.dark :where(a, button, input, textarea, select):focus-visible {
+    outline-color: #83cdc3;
+  }
+
+  textarea {
+    caret-color: #176e68;
+  }
+
+  html.dark textarea {
+    caret-color: #83cdc3;
+  }
+
+  .research-composer textarea:focus-visible,
+  html.dark .research-composer textarea:focus-visible {
+    outline: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer utilities {

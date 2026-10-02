@@ -99,7 +99,7 @@ The API accepts a JSON object in the request body, where you define the enabled 
 
 - **`sources`** (array, required): Which search sources to enable. Available values:
 
-  - `web`, `academic`, `discussions`.
+  - `web`, `academic`, `discussions`. Web is always included for every query and follow-up. Academic and discussion sources add to it; omitting `web` does not disable web search.
 
 - **`optimizationMode`** (string, optional): Specifies the optimization mode to control the balance between performance and quality. Available modes:
 

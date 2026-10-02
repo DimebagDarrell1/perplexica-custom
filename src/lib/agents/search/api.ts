@@ -1,6 +1,6 @@
 import { abortable } from '@/lib/utils/cancellation';
 import { CancellableLLM, CancellableEmbedding } from '@/lib/models/cancellable';
-import { ResearcherOutput, SearchAgentInput } from './types';
+import { SearchAgentInput } from './types';
 import SessionManager from '@/lib/session';
 import { classify } from './classifier';
 import Researcher from './researcher';
@@ -19,6 +19,9 @@ class APISearchAgent {
       ...input,
       config: {
         ...input.config,
+        sources: input.config.sources.includes('web')
+          ? input.config.sources
+          : [...input.config.sources, 'web'],
         llm: new CancellableLLM(input.config.llm, session.signal),
         embedding: new CancellableEmbedding(
           input.config.embedding,
@@ -49,17 +52,17 @@ class APISearchAgent {
         return [];
       });
 
-      let searchPromise: Promise<ResearcherOutput> | null = null;
-
-      if (!classification.classification.skipSearch) {
-        const researcher = new Researcher();
-        searchPromise = researcher.research(session, {
-          chatHistory: input.chatHistory,
-          followUp: input.followUp,
-          classification: classification,
-          config: input.config,
-        });
-      }
+      const researcher = new Researcher();
+      const searchPromise = abortable(
+        () =>
+          researcher.research(session, {
+            chatHistory: input.chatHistory,
+            followUp: input.followUp,
+            classification,
+            config: input.config,
+          }),
+        session.signal,
+      );
 
       const [widgetOutputs, searchResults] = await Promise.all([
         widgetPromise,
@@ -76,6 +79,7 @@ class APISearchAgent {
         input.config.mode,
         session.signal,
         input.config.fileIds.length > 0,
+        input.config.useJev !== false,
       );
 
       if (searchResults) {

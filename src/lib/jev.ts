@@ -27,14 +27,21 @@ const boundedInteger = (
     : fallback;
 };
 
-export const getJevConfig = () => {
-  const provider = process.env.JEV_PROVIDER?.trim() || 'typesafe';
+export const getJevConfig = (saved: Record<string, unknown> = {}) => {
+  const provider = String(
+    saved.jevProvider ?? process.env.JEV_PROVIDER ?? 'typesafe',
+  ).trim();
   const service = Object.hasOwn(PROVIDERS, provider)
     ? PROVIDERS[provider as keyof typeof PROVIDERS]
     : undefined;
-  const apiKey = process.env.JEV_API_KEY?.trim() || '';
+  const apiKey = String(
+    saved.jevApiKey ?? process.env.JEV_API_KEY ?? '',
+  ).trim();
+  const enabled = saved.jevEnabled ?? process.env.JEV_ENABLED;
   return {
-    enabled: process.env.JEV_ENABLED?.toLowerCase() === 'true',
+    enabled:
+      enabled === true ||
+      (typeof enabled === 'string' && enabled.toLowerCase() === 'true'),
     configured: !!service && !!apiKey,
     provider,
     endpoint: service?.endpoint,
@@ -46,9 +53,9 @@ export const getJevConfig = () => {
 };
 
 /** Configuration visibility only; this does not call a billable endpoint. */
-export const getJevStatus = () => {
+export const getJevStatus = (saved: Record<string, unknown> = {}) => {
   const { enabled, configured, provider, model, maxCandidates, timeoutMs } =
-    getJevConfig();
+    getJevConfig(saved);
   return {
     enabled,
     configured,
@@ -191,9 +198,9 @@ export async function rerankWithJev(
   query: string,
   results: RankedWebResult[],
   signal?: AbortSignal,
+  config = getJevConfig(),
 ): Promise<JevRerankResult> {
   signal?.throwIfAborted();
-  const config = getJevConfig();
   const unchanged = (
     status: JevRerankResult['status'],
     reason?: string,

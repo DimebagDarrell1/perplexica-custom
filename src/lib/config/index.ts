@@ -104,6 +104,39 @@ class ConfigManager {
     modelProviders: [],
     search: [
       {
+        name: 'Enable optional Jev ranking',
+        key: 'jevEnabled',
+        type: 'switch',
+        required: false,
+        default: false,
+        scope: 'server',
+        description:
+          'Allow the per-search Jev toggle in Balanced and Quality modes. Requests use provider API credits and send the question plus public search titles and snippets. Uploaded files stay excluded.',
+      },
+      {
+        name: 'Jev provider',
+        key: 'jevProvider',
+        type: 'select',
+        required: false,
+        default: 'typesafe',
+        scope: 'server',
+        description: 'Choose the service that owns your dedicated Jev key.',
+        options: [
+          { name: 'OpenRouter', value: 'openrouter' },
+          { name: 'TypeSafe', value: 'typesafe' },
+        ],
+      },
+      {
+        name: 'Jev API key',
+        key: 'jevApiKey',
+        type: 'password',
+        required: false,
+        scope: 'server',
+        placeholder: 'Dedicated OpenRouter or TypeSafe key',
+        description:
+          'Saved on this server and masked when settings load. For OpenRouter, use a separate key with a credit limit. Clear the field to remove the saved key.',
+      },
+      {
         name: 'SearXNG URL',
         key: 'searxngURL',
         type: 'string',

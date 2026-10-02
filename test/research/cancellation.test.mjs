@@ -149,7 +149,14 @@ test('search saves its partial answer as cancelled before sending messageEnd', a
     './classifier': {
       classify: async () => ({ classification: { skipSearch: true } }),
     },
-    './researcher': {},
+    './researcher': {
+      __esModule: true,
+      default: class {
+        async research() {
+          return { searchFindings: [] };
+        }
+      },
+    },
     './widgets': { WidgetExecutor: { executeAll: async () => [] } },
     './writerContext': {
       prepareWriterContext: async () => [],
@@ -285,6 +292,7 @@ test('a done tool in a batch does not discard the search beside it', async () =>
         ActionRegistry: {
           getAvailableActionTools: () => [],
           getAvailableActionsDescriptions: () => '',
+          execute: async () => ({ type: 'search_results', results: [] }),
           executeAll: async (calls) => {
             executed = calls.map((call) => call.name);
             return [

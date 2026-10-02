@@ -191,7 +191,13 @@ const AddProvider = ({
                             placeholder={
                               (field as StringUIConfigField).placeholder
                             }
-                            type="text"
+                            aria-label={field.name}
+                            autoComplete={
+                              field.type === 'password' ? 'off' : undefined
+                            }
+                            type={
+                              field.type === 'password' ? 'password' : 'text'
+                            }
                             required={field.required}
                           />
                         </div>

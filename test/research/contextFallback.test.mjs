@@ -16,6 +16,10 @@ test('failed deep reads retain web snippets alongside uploaded evidence', async 
   const { buildFilteredContext } = loadTs(
     'src/lib/agents/search/contextFilter.ts',
     {
+      '@/lib/config': {
+        __esModule: true,
+        default: { getConfig: (_key, fallback) => fallback },
+      },
       '@/lib/scraper': {
         __esModule: true,
         default: {

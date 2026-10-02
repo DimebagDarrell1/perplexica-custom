@@ -54,11 +54,31 @@ const redactProvider = (
   };
 };
 
+const redactSection = (
+  values: Record<string, unknown>,
+  fields: UIConfigSections['search'],
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [
+      key,
+      fields.some((field) => field.key === key && field.type === 'password') &&
+      value
+        ? REDACTED_SECRET
+        : value,
+    ]),
+  );
+
 export const redactConfigSecrets = (
   config: Config,
   sections: UIConfigSections,
 ): Config => ({
   ...config,
+  search: redactSection(config.search, sections.search),
+  preferences: redactSection(config.preferences, sections.preferences),
+  personalization: redactSection(
+    config.personalization,
+    sections.personalization,
+  ),
   modelProviders: config.modelProviders.map((provider) =>
     redactProvider(provider, sections),
   ),

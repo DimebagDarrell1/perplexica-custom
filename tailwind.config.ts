@@ -35,6 +35,7 @@ const config: Config = {
         const colorsLight = themeLight(colors);
 
         return {
+          accent: { DEFAULT: '#176e68', dark: '#83cdc3' },
           dark: {
             primary: colorsDark[50],
             secondary: colorsDark[100],

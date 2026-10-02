@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Settings } from 'lucide-react';
 import EmptyChatMessageInput from './EmptyChatMessageInput';
-import { File } from './ChatWindow';
-import Link from 'next/link';
+import BuildLabel from './BuildLabel';
 import WeatherWidget from './WeatherWidget';
 import NewsArticleWidget from './NewsArticleWidget';
 import SettingsButtonMobile from '@/components/Settings/SettingsButtonMobile';
@@ -43,14 +41,20 @@ const EmptyChat = () => {
 
   return (
     <div className="relative">
-      <div className="absolute w-full flex flex-row items-center justify-end mr-5 mt-5">
+      <div className="absolute right-0 top-4 flex items-center">
         <SettingsButtonMobile />
       </div>
-      <div className="flex flex-col items-center justify-center min-h-screen max-w-screen-sm mx-auto p-2 space-y-4">
+      <div className="flex flex-col items-center justify-center min-h-screen max-w-screen-sm mx-auto px-2 pt-20 pb-28 lg:pb-12 space-y-6">
         <div className="flex flex-col items-center justify-center w-full space-y-8">
-          <h2 className="text-black/70 dark:text-white/70 text-3xl font-medium -mt-8">
-            Research begins here.
-          </h2>
+          <div className="flex flex-col items-center gap-3 text-center">
+            <h1 className="text-black/90 dark:text-white/90 text-3xl sm:text-4xl font-medium tracking-tight">
+              Dorian&apos;s Perplexica
+            </h1>
+            <p className="text-sm text-black/70 dark:text-white/70">
+              Research begins here.
+            </p>
+            <BuildLabel />
+          </div>
           <EmptyChatMessageInput />
         </div>
         {(showWeather || showNews) && (

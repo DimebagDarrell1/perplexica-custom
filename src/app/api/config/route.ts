@@ -6,11 +6,12 @@ import {
   isKnownServerConfigKey,
   redactConfigSecrets,
   requireAdminToken,
+  REDACTED_SECRET,
 } from '@/lib/config/security';
 
 type SaveConfigBody = {
   key: string;
-  value: string;
+  value: unknown;
 };
 
 export const GET = async (req: NextRequest) => {
@@ -80,7 +81,26 @@ export const POST = async (req: NextRequest) => {
       );
     }
 
-    configManager.updateConfig(body.key, body.value);
+    const field = configManager
+      .getUIConfigSections()
+      .search.find((field) => body.key === `search.${field.key}`);
+    if (body.key.startsWith('search.jev')) {
+      const valid =
+        field?.type === 'switch'
+          ? typeof body.value === 'boolean'
+          : field?.type === 'select'
+            ? field.options.some((option) => option.value === body.value)
+            : typeof body.value === 'string' && body.value.length <= 4096;
+      if (!valid)
+        return Response.json(
+          { message: 'Invalid Jev setting.' },
+          { status: 400 },
+        );
+    }
+    // A masked value means keep the saved credential. An empty string removes it.
+    if (!(field?.type === 'password' && body.value === REDACTED_SECRET)) {
+      configManager.updateConfig(body.key, body.value);
+    }
 
     return Response.json(
       {

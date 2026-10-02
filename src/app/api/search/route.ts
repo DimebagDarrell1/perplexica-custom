@@ -13,6 +13,7 @@ interface ChatRequestBody {
   query: string;
   history: Array<[string, string]>;
   stream?: boolean;
+  useJev?: boolean;
   systemInstructions?: string;
 }
 
@@ -27,6 +28,12 @@ export const POST = async (req: Request) => {
       );
     }
 
+    if (body.useJev !== undefined && typeof body.useJev !== 'boolean') {
+      return Response.json(
+        { message: 'useJev must be a boolean.' },
+        { status: 400 },
+      );
+    }
     body.history = body.history || [];
     body.optimizationMode = body.optimizationMode || 'speed';
     body.stream = body.stream || false;
@@ -58,6 +65,7 @@ export const POST = async (req: Request) => {
         llm: llm,
         sources: body.sources,
         mode: body.optimizationMode,
+        useJev: body.useJev,
         fileIds: [],
         systemInstructions: body.systemInstructions || '',
       },

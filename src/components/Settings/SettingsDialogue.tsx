@@ -18,6 +18,7 @@ import Models from './Sections/Models/Section';
 import SearchSection from './Sections/Search';
 import Select from '@/components/ui/Select';
 import Personalization from './Sections/Personalization';
+import BuildLabel from '../BuildLabel';
 
 const sections = [
   {
@@ -150,16 +151,17 @@ const SettingsDialogue = ({
                   </div>
                 </div>
                 <div className="flex flex-col space-y-1 py-[18px] px-2">
-                  <p className="text-xs text-black/70 dark:text-white/70">
-                    Version: {process.env.NEXT_PUBLIC_VERSION}
+                  <p className="text-xs text-black/80 dark:text-white/80">
+                    Dorian&apos;s Perplexica
                   </p>
+                  <BuildLabel />
                   <a
-                    href="https://github.com/itzcrazykns/perplexica"
+                    href="https://github.com/DimebagDarrell1/perplexica-custom"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-black/70 dark:text-white/70 flex flex-row space-x-1 items-center transition duration-200 hover:text-black/90 hover:dark:text-white/90"
                   >
-                    <span>GitHub</span>
+                    <span>Custom fork on GitHub</span>
                     <ExternalLink size={12} />
                   </a>
                 </div>
@@ -168,7 +170,8 @@ const SettingsDialogue = ({
                 <div className="flex flex-row lg:hidden w-full justify-between px-[20px] my-4 flex-shrink-0">
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="group flex flex-row items-center hover:bg-light-200 hover:dark:bg-dark-200 rounded-lg mr-[40%]"
+                    aria-label="Close settings"
+                    className="group flex min-h-11 min-w-11 items-center justify-center hover:bg-light-200 hover:dark:bg-dark-200 rounded-lg"
                   >
                     <ArrowLeft
                       size={18}
@@ -176,6 +179,7 @@ const SettingsDialogue = ({
                     />
                   </button>
                   <Select
+                    aria-label="Settings section"
                     options={sections.map((section) => {
                       return {
                         value: section.key,
@@ -210,6 +214,9 @@ const SettingsDialogue = ({
                     </div>
                   </div>
                 )}
+                <div className="lg:hidden shrink-0 px-6 py-3">
+                  <BuildLabel />
+                </div>
               </div>
             </div>
           )}

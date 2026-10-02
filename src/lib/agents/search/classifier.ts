@@ -7,7 +7,7 @@ const schema = z.object({
   classification: z.object({
     skipSearch: z
       .boolean()
-      .describe('Indicates whether to skip the search step.'),
+      .describe('Always false: every query requires a web search.'),
     personalSearch: z
       .boolean()
       .describe('Indicates whether to perform a personal search.'),
@@ -49,5 +49,11 @@ export const classify = async (input: ClassifierInput) => {
     schema,
   });
 
-  return output;
+  return {
+    ...output,
+    classification: {
+      ...output.classification,
+      skipSearch: false,
+    },
+  };
 };
