@@ -66,6 +66,10 @@ export const POST = async (req: Request) => {
         sources: body.sources,
         mode: body.optimizationMode,
         useJev: body.useJev,
+        modelInfo: {
+          chat: { providerId: body.chatModel.providerId, key: body.chatModel.key },
+          embedding: { providerId: body.embeddingModel.providerId, key: body.embeddingModel.key },
+        },
         fileIds: [],
         systemInstructions: body.systemInstructions || '',
       },

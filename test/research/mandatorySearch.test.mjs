@@ -256,6 +256,11 @@ for (const [path, name] of [
         );
         assert.deepEqual(request.config.sources, ['academic', 'discussions']);
         const blocks = session.getAllBlocks();
+        const finalSources =
+          name === 'chat'
+            ? blocks.find((block) => block.type === 'source').data
+            : events.find((event) => event.type === 'searchResults').data;
+        assert.equal(finalSources[0].metadata.research.mode, mode);
         assert.ok(
           blocks.some((block) => block.type === 'research'),
           kind,

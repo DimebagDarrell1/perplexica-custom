@@ -64,6 +64,42 @@ const noFetch = () => {
   throw new Error('Unexpected network request');
 };
 
+test('an OpenRouter key without a saved provider uses OpenRouter, including automatic selection', async () => {
+  await withConfig(
+    { JEV_API_KEY: 'sk-or-fixture' },
+    async (url) => {
+      assert.equal(url, 'https://openrouter.ai/api/alpha/decisions');
+      return answer([0.1, 0.9, 0.4]);
+    },
+    async () => {
+      for (const saved of [{}, { jevProvider: 'auto' }]) {
+        const config = getJevConfig(saved);
+        assert.equal(config.provider, 'openrouter');
+        assert.equal(config.configured, true);
+        assert.equal(
+          (await rerankWithJev('query', results, undefined, config)).status,
+          'applied',
+        );
+      }
+    },
+  );
+});
+
+test('an explicit TypeSafe/OpenRouter key mismatch never sends the credential', async () => {
+  await withConfig(
+    { JEV_API_KEY: 'sk-or-fixture', JEV_PROVIDER: 'typesafe' },
+    noFetch,
+    async () => {
+      assert.equal(getJevStatus().state, 'misconfigured');
+      assert.equal(getJevStatus().configurationError, 'provider_key_mismatch');
+      const output = await rerankWithJev('query', results);
+      assert.equal(output.reason, 'provider_key_mismatch');
+      assert.equal(output.results, results);
+      assert.doesNotMatch(JSON.stringify(getJevStatus()), /sk-or-fixture/);
+    },
+  );
+});
+
 test('disabled, missing credentials and unsupported providers never call the API', async () => {
   for (const config of [
     { JEV_ENABLED: 'false' },

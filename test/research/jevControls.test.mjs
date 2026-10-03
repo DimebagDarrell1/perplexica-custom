@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadTs } from '../helpers/loadTs.mjs';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 const { getJevConfig } = loadTs('src/lib/jev.ts');
 const { redactConfigSecrets } = loadTs('src/lib/config/security.ts');
 const fields = [
@@ -9,7 +11,11 @@ const fields = [
     key: 'jevProvider',
     type: 'select',
     scope: 'server',
-    options: [{ value: 'openrouter' }, { value: 'typesafe' }],
+    options: [
+      { value: 'auto' },
+      { value: 'openrouter' },
+      { value: 'typesafe' },
+    ],
   },
   { key: 'jevApiKey', type: 'password', scope: 'server' },
 ];
@@ -19,6 +25,30 @@ const sections = {
   personalization: [],
   modelProviders: [],
 };
+
+test('saved Jev authentication failure explains the fix while retaining sources', () => {
+  const { default: MessageSources } = loadTs(
+    'src/components/MessageSources.tsx',
+  );
+  const html = renderToStaticMarkup(
+    React.createElement(MessageSources, {
+      sources: [
+        {
+          content: 'Evidence',
+          metadata: {
+            title: 'Useful source',
+            url: 'https://example.com/article',
+            jev: { status: 'fallback', reason: 'http_401', used: false },
+          },
+        },
+      ],
+    }),
+  );
+  assert.match(html, /Jev authentication failed/);
+  assert.match(html, /Check the provider and API key/);
+  assert.match(html, /Standard ranking used/);
+  assert.match(html, /https:\/\/example.com\/article/);
+});
 
 test('saved Jev settings use a dedicated key, override defaults and redact secrets', () => {
   const saved = {

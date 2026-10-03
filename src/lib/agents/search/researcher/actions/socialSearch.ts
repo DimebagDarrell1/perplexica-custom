@@ -89,6 +89,7 @@ const socialSearchAction: ResearchAction<typeof schema> = {
             searchQuery: q,
             searchQueries: [q],
             searchRank: rank + 1,
+            searchEngines: r.engines ?? (r.engine ? [r.engine] : []),
             sourceType: 'discussion',
           },
         })),

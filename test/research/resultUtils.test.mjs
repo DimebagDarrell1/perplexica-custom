@@ -127,3 +127,18 @@ test('evidence deduplication preserves case-sensitive facts', () => {
     2,
   );
 });
+
+test('regrouping final sources preserves passage counts and discovery keeps engine provenance', () => {
+  const first = chunk('https://example.com/article', 'First fact');
+  const second = chunk('https://example.com/article', 'Second fact');
+  first.metadata.searchEngines = ['bing'];
+  second.metadata.searchEngines = ['yandex'];
+  assert.deepEqual(
+    dedupeSearchResults([first, second])[0].metadata.searchEngines,
+    ['bing', 'yandex'],
+  );
+  const once = groupEvidenceBySource([first, second]);
+  const twice = groupEvidenceBySource(once);
+  assert.equal(twice[0].metadata.evidenceChunkCount, 2);
+  assert.equal(twice[0].content, once[0].content);
+});

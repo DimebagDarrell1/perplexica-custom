@@ -6,13 +6,13 @@ The integration is off by default. No account, dependency, database migration, o
 
 ## Set up and compare in the app
 
-Open Settings > Search. Choose OpenRouter or TypeSafe, enter a dedicated Jev API key, then enable optional Jev ranking. The key stays in the server's existing settings file. Settings responses mask it, and saving the mask preserves the key. Clearing the field removes the saved key. No real key was added during development.
+Open Settings > Search. Choose Automatic, OpenRouter, or TypeSafe, enter a dedicated Jev API key, then enable optional Jev ranking. The key stays in the server's existing settings file. Settings responses mask it, and saving the mask preserves the key. Clearing the field removes the saved key. No real key was added during development.
 
 The Jev toggle sits beside the question box and follow-up box. It starts off for a new chat. Choose Balanced or Quality to turn it on. Speed mode and chats with uploaded files exclude Jev. Setting up the provider does not itself send an inference request.
 
 For a useful comparison, run the same question in two new chats with the same model, embedding provider and search mode. Leave Jev off in one and turn it on in the other. Inspect selected sources, citations, answer usefulness, elapsed time and OpenRouter usage. Search results can change between runs, so this is a practical comparison rather than a controlled benchmark.
 
-New answers save a source label that reports whether Jev was used, skipped or unavailable. Context recovery retains completed Jev ordering and page reads. The label distinguishes retained ranking from an attempt that did not reach the answer, and identifies snippet or partial-page context. An enabled toggle alone does not prove that Jev affected an answer. Older answers have no such label.
+New answers save a source label that reports whether Jev was used, skipped or unavailable. Authentication failures, provider mismatches, rate limits, credit failures, and timeouts have specific messages. Saved source metadata includes model and mode identifiers, engine provenance, and Jev usage when returned by the provider. Context recovery retains completed Jev ordering and page reads. The label distinguishes retained ranking from an attempt that did not reach the answer, and identifies snippet or partial-page context. An enabled toggle alone does not prove that Jev affected an answer. Older answers have no such label.
 
 Saved Jev settings take precedence over environment defaults. Disable it in Settings > Search to stop its use after UI configuration. Queries and public search snippets leave the server when a search actually uses Jev, and OpenRouter bills those requests separately from any Codex subscription.
 
@@ -22,14 +22,14 @@ Choose one provider and supply its key through the server environment or the Com
 
 ```dotenv
 JEV_ENABLED=true
-JEV_PROVIDER=typesafe
+JEV_PROVIDER=auto
 JEV_API_KEY=your-provider-key
 JEV_MODEL=
 JEV_MAX_CANDIDATES=24
 JEV_TIMEOUT_MS=2000
 ```
 
-For OpenRouter, set `JEV_PROVIDER=openrouter` and use an OpenRouter key in `JEV_API_KEY`. The integration does not automatically reuse keys from your saved chat providers, `OPENROUTER_API_KEY`, or `TYPESAFE_API_KEY`. The app never saves the key in browser local storage. The Search settings form sends it to the server when you enter it.
+Automatic recognizes keys beginning with `sk-or-` as OpenRouter and uses TypeSafe for other keys. An explicitly selected TypeSafe provider with an OpenRouter-format key is rejected locally. For OpenRouter, you can also set `JEV_PROVIDER=openrouter` and use an OpenRouter key in `JEV_API_KEY`. The integration does not automatically reuse keys from your saved chat providers, `OPENROUTER_API_KEY`, or `TYPESAFE_API_KEY`. The app never saves the key in browser local storage. The Search settings form sends it to the server when you enter it.
 
 | Provider     | Native endpoint                             | Default model       |
 | ------------ | ------------------------------------------- | ------------------- |
@@ -53,7 +53,7 @@ If you have not saved a UI override, set `JEV_ENABLED=false` and restart or recr
 - Scores are matched to explicit candidate IDs, then used to reorder the shortlist. Ties preserve original order. Candidates keep their original content, URLs, and citation metadata. Jev cannot invent a new source or execute an action.
 - Stop response cancels an in-flight Jev request. Context-processing timeout also cancels it. User cancellation propagates rather than becoming a fallback that continues generation.
 
-This adds latency and billable input to an enabled search. Limits bound each request, not total account spending. Jev's relevance judgment is not a factual accuracy or source-trust check. Its performance on this fork has not been measured against a live provider. TypeSafe documents limitations with literal instructions, large states, adversarial text, and non-English accuracy; see its [known limitations](https://docs.typesafe.ai/model-jaggedness/jev-1.13).
+This adds latency and billable input to an enabled search. Limits bound each request, not total account spending. Jev's relevance judgment is not a factual accuracy or source-trust check. A bounded live Coraline comparison produced cited answers with Jev off and on; Jev added the official LAIKA source in that test. This single result is not a general quality benchmark. See [the reliability review](../maintenance/search-reliability-2026-10-03.md). TypeSafe documents limitations with literal instructions, large states, adversarial text, and non-English accuracy; see its [known limitations](https://docs.typesafe.ai/model-jaggedness/jev-1.13).
 
 ## Check configuration and evaluate
 
@@ -75,7 +75,7 @@ After configuring a dedicated key and explicitly enabling Jev through the enviro
 yarn eval:jev --live
 ```
 
-It prints the expected candidate's position before and after reranking, latency, model, and returned usage. It stops on the first provider failure. This live evaluation has not been run because no dedicated Jev key was configured.
+It prints the expected candidate's position before and after reranking, latency, model, and returned usage. It stops on the first provider failure. The six-case synthetic live evaluation has not been run. The separately documented Coraline comparison used the configured OpenRouter key.
 
 Before enabling Jev routinely, compare real representative searches with it off and on, including your common ambiguous queries and languages. Check useful sources in the first pages read, answer citations, latency, and provider usage. Keep it disabled if it does not improve those outcomes.
 

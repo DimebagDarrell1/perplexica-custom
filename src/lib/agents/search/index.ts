@@ -130,6 +130,12 @@ class SearchAgent {
         input.config.fileIds.length > 0,
         input.config.useJev !== false,
       );
+      filteredChunks.forEach((chunk) => {
+        chunk.metadata.research = {
+          mode: input.config.mode,
+          models: input.config.modelInfo,
+        };
+      });
 
       if (searchResults?.sourceBlockId) {
         session.updateBlock(searchResults.sourceBlockId, [

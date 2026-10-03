@@ -1,4 +1,5 @@
 import { safeLink } from '@/lib/web/safeLinks';
+import { getJevFailureMessage } from '@/lib/jevStatus';
 /* eslint-disable @next/next/no-img-element */
 import {
   Dialog,
@@ -37,7 +38,7 @@ const MessageSources = ({ sources }: { sources: Chunk[] }) => {
               : jev.status === 'disabled'
                 ? 'Jev disabled on the server'
                 : jev.status === 'fallback'
-                  ? 'Jev unavailable; standard ranking used'
+                  ? `${getJevFailureMessage(jev.reason)} Standard ranking used.`
                   : 'Jev was not used';
 
   const closeModal = () => {

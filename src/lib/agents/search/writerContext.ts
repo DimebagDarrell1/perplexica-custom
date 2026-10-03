@@ -249,6 +249,9 @@ export const prepareWriterContext = async (
           (!contextFallback || checkpoint?.jevUsed === true),
         candidateCount: reranking?.candidateCount || 0,
         durationMs: reranking?.durationMs || 0,
+        provider: reranking?.provider,
+        model: reranking?.model,
+        usage: reranking?.usage,
       },
     },
     content: truncateTokens(

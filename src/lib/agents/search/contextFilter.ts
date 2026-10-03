@@ -37,6 +37,7 @@ type ScrapedPage = {
   content: string;
   provider: string;
   cached: boolean;
+  discoveryMetadata?: Chunk['metadata'];
 };
 
 // ---------------------------------------------------------------------------
@@ -185,6 +186,9 @@ export const scrapeRelevantUrls = async (
             content: truncateContent(scraped.content),
             provider: scraped.provider,
             cached: scraped.cached === true,
+            discoveryMetadata: rankedResults.find(
+              ({ chunk }) => chunk.metadata.url === url,
+            )?.chunk.metadata,
           };
           onPage?.(page);
           return page;
@@ -238,6 +242,7 @@ export const selectRelevantChunks = async (
     title: string;
     provider: string;
     cached: boolean;
+    discoveryMetadata?: Chunk['metadata'];
   }[] = [];
 
   const maxChunksPerPage = Math.max(
@@ -258,6 +263,7 @@ export const selectRelevantChunks = async (
         title: page.title,
         provider: page.provider,
         cached: page.cached,
+        discoveryMetadata: page.discoveryMetadata,
       });
     });
   });
@@ -322,6 +328,7 @@ export const selectRelevantChunks = async (
   const selectedChunks: Chunk[] = rankedChunkIndices.map((idx) => ({
     content: allChunks[idx].content,
     metadata: {
+      ...allChunks[idx].discoveryMetadata,
       title: allChunks[idx].title,
       url: allChunks[idx].url,
       extractionProvider: allChunks[idx].provider,

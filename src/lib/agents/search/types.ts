@@ -14,6 +14,10 @@ export type SearchAgentConfig = {
   mode: 'speed' | 'balanced' | 'quality';
   systemInstructions: string;
   useJev?: boolean;
+  modelInfo?: {
+    chat: { providerId: string; key: string };
+    embedding: { providerId: string; key: string };
+  };
 };
 
 export type SearchAgentInput = {

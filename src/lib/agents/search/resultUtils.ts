@@ -133,6 +133,16 @@ export const dedupeSearchResults = (chunks: Chunk[]): Chunk[] => {
     existing.metadata.searchQueries = Array.from(
       new Set([...getSearchQueries(existing), ...getSearchQueries(trimmed)]),
     );
+    existing.metadata.searchEngines = Array.from(
+      new Set([
+        ...(Array.isArray(existing.metadata.searchEngines)
+          ? existing.metadata.searchEngines
+          : []),
+        ...(Array.isArray(trimmed.metadata.searchEngines)
+          ? trimmed.metadata.searchEngines
+          : []),
+      ]),
+    );
   });
 
   return Array.from(byKey.values());
@@ -234,13 +244,18 @@ export const groupEvidenceBySource = (
     const key = getSourceKey(chunk);
     const existing = grouped.get(key);
     const content = chunk.content.trim();
+    const passageCount =
+      Number.isInteger(chunk.metadata.evidenceChunkCount) &&
+      chunk.metadata.evidenceChunkCount > 0
+        ? chunk.metadata.evidenceChunkCount
+        : 1;
 
     if (!existing) {
       grouped.set(key, {
         chunk: {
           ...chunk,
           content: content.slice(0, maxCharsPerSource),
-          metadata: { ...chunk.metadata, evidenceChunkCount: 1 },
+          metadata: { ...chunk.metadata, evidenceChunkCount: passageCount },
         },
         contents: [content],
         chars: Math.min(content.length, maxCharsPerSource),
@@ -256,7 +271,7 @@ export const groupEvidenceBySource = (
     existing.contents.push(nextContent);
     existing.chars += separator.length + nextContent.length;
     existing.chunk.content = existing.contents.join(separator);
-    existing.chunk.metadata.evidenceChunkCount = existing.contents.length;
+    existing.chunk.metadata.evidenceChunkCount += passageCount;
   });
 
   return Array.from(grouped.values()).map(({ chunk }) => chunk);

@@ -199,6 +199,10 @@ export const POST = async (req: Request) => {
         sources: body.sources as SearchSources[],
         mode: body.optimizationMode,
         useJev: body.useJev,
+        modelInfo: {
+          chat: { providerId: body.chatModel.providerId, key: body.chatModel.key },
+          embedding: { providerId: body.embeddingModel.providerId, key: body.embeddingModel.key },
+        },
         fileIds: body.files,
         systemInstructions: body.systemInstructions || 'None',
       },

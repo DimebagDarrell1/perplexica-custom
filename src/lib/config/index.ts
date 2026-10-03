@@ -118,10 +118,12 @@ class ConfigManager {
         key: 'jevProvider',
         type: 'select',
         required: false,
-        default: 'typesafe',
+        default: 'auto',
         scope: 'server',
-        description: 'Choose the service that owns your dedicated Jev key.',
+        description:
+          'Automatic recognizes OpenRouter keys; other keys use TypeSafe. You can also choose the provider explicitly.',
         options: [
+          { name: 'Automatic', value: 'auto' },
           { name: 'OpenRouter', value: 'openrouter' },
           { name: 'TypeSafe', value: 'typesafe' },
         ],

@@ -32,6 +32,32 @@ const writer = (buildFilteredContext) =>
     '@/lib/uploads/store': {},
   });
 
+test('successful deep reads retain discovery engines and query across redirects', async () => {
+  const { buildFilteredContext } = pipeline(async () => ({
+    url: 'https://laika.example/final',
+    title: 'Official film page',
+    content: 'Coraline had nine different outfits for the film.',
+    provider: 'fetch',
+  }));
+  const source = {
+    ...relevant,
+    metadata: {
+      ...relevant.metadata,
+      searchQueries: ['Coraline production'],
+      searchEngines: ['yandex'],
+    },
+  };
+  const result = await buildFilteredContext(
+    'Coraline',
+    undefined,
+    [source],
+    embedding,
+  );
+  assert.equal(result[0].metadata.url, 'https://laika.example/final');
+  assert.deepEqual(result[0].metadata.searchEngines, ['yandex']);
+  assert.deepEqual(result[0].metadata.searchQueries, ['Coraline production']);
+});
+
 test('unranked recovery excludes zero-overlap snippets when topic matches exist', async () => {
   const { prepareWriterContext } = writer(async () => {
     throw new Error('offline');

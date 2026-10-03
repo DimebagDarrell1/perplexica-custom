@@ -81,6 +81,12 @@ class APISearchAgent {
         input.config.fileIds.length > 0,
         input.config.useJev !== false,
       );
+      filteredChunks.forEach((chunk) => {
+        chunk.metadata.research = {
+          mode: input.config.mode,
+          models: input.config.modelInfo,
+        };
+      });
 
       if (searchResults) {
         session.emit('data', {

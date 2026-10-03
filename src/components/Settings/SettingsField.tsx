@@ -82,7 +82,7 @@ const SettingsSelect = ({
         </div>
         <Select
           aria-label={field.name}
-          value={value}
+          value={value ?? field.default ?? ''}
           onChange={(event) => handleSave(event.target.value)}
           options={field.options.map((option) => ({
             value: option.value,

@@ -3,8 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useChat } from '@/lib/hooks/useChat';
 import { cn } from '@/lib/utils';
+import { getJevFailureMessage } from '@/lib/jevStatus';
 
-type JevStatus = { enabled: boolean; configured: boolean; provider: string };
+type JevStatus = {
+  enabled: boolean;
+  configured: boolean;
+  provider: string;
+  configurationError?: string;
+};
 
 const JevToggle = () => {
   const {
@@ -63,12 +69,14 @@ const JevToggle = () => {
     : !status
       ? 'Checking setup...'
       : !ready
-        ? 'Set up Jev in Settings > Search.'
+        ? status.configurationError
+          ? getJevFailureMessage(status.configurationError)
+          : 'Enable Jev in Settings > Search.'
         : files
           ? 'Jev stays off for uploaded files.'
           : speed
             ? 'Requires Balanced or Quality mode.'
-            : 'Optional source ranking. Uses API credits.';
+            : `${status.provider === 'openrouter' ? 'OpenRouter' : 'TypeSafe'} source ranking. Uses API credits.`;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-black/70 dark:text-white/70">

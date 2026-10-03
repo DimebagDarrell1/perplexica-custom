@@ -1,13 +1,10 @@
-import { JSDOM } from 'jsdom';
-import { Readability } from '@mozilla/readability';
 import { Mutex } from 'async-mutex';
-import TurnDown from 'turndown';
 import { getFirecrawlConfig, scrapeWithFirecrawl } from './firecrawl';
 import { assertSafePublicUrl } from './web/urlSafety';
 import { safeFetch } from './web/safeFetch';
 import { secureBrowserContext } from './web/browserNetwork';
+import { extractReadableHtml } from './web/readableContent';
 
-const turndownService = new TurnDown();
 const MIN_USEFUL_CONTENT_CHARS = 500;
 
 export type ScrapeProvider = 'firecrawl' | 'fetch' | 'playwright';
@@ -113,12 +110,9 @@ class Scraper {
       await assertSafePublicUrl(finalUrl);
 
       const html = await page.content();
-      const dom = new JSDOM(html, { url: finalUrl });
-      const readable = new Readability(dom.window.document).parse();
-      const title = (await page.title()) || `Content from ${finalUrl}`;
-      const content = readable?.textContent?.trim() || '';
-
-      if (!content) throw new Error('Browser extraction returned no content');
+      browserSignal.throwIfAborted();
+      const { title, content } = extractReadableHtml(html, finalUrl);
+      browserSignal.throwIfAborted();
 
       return {
         title,
@@ -149,11 +143,12 @@ class Scraper {
     ) {
       throw new Error(`Unsupported content type: ${contentType || 'none'}`);
     }
-    const html = await response.text();
-    const title =
-      html.match(/<title>([\s\S]*?)<\/title>/i)?.[1]?.trim() ||
-      `Content from ${finalUrl}`;
-    const content = turndownService.turndown(html).trim();
+    const body = await response.text();
+    signal?.throwIfAborted();
+    const { title, content } = contentType.includes('text/plain')
+      ? { title: `Content from ${finalUrl}`, content: body.trim() }
+      : extractReadableHtml(body, finalUrl);
+    signal?.throwIfAborted();
     if (!content) throw new Error('Fetch extraction returned no content');
     return { title, url: finalUrl, content, provider: 'fetch' };
   }
@@ -201,6 +196,7 @@ class Scraper {
       }
       return fetchResult;
     } catch (error) {
+      options.signal?.throwIfAborted();
       if (fetchResult) return fetchResult;
       throw error;
     }
