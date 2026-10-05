@@ -7,14 +7,18 @@ engine.
 
 ## Configure Firecrawl
 
-Set these variables in the shell or Compose `.env` file used to launch the
-PR-test stack:
+The simplest setup is **Settings → Search**: turn on Firecrawl page reading and
+enter the Firecrawl URL (and key, if your server needs one). Saved settings take
+precedence over the variables below.
+
+To configure it through the environment instead, set these variables in the
+shell or Compose `.env` file used to launch the PR-test stack:
 
 ```dotenv
 FIRECRAWL_ENABLED=true
 FIRECRAWL_API_URL=http://host.docker.internal:<firecrawl-port>
 FIRECRAWL_API_KEY=
-FIRECRAWL_TIMEOUT_MS=20000
+FIRECRAWL_TIMEOUT_MS=15000
 FIRECRAWL_MAX_AGE_MS=3600000
 FIRECRAWL_CACHE_TTL_MS=900000
 ```
@@ -25,8 +29,12 @@ is on another machine or a shared Docker network, use the URL reachable from
 inside the Perplexica container instead.
 
 `FIRECRAWL_API_KEY` is optional for a self-hosted instance that does not require
-authentication. Firecrawl remains off unless both `FIRECRAWL_ENABLED=true` and
-`FIRECRAWL_API_URL` are set.
+authentication. Firecrawl remains off unless it is enabled and has a valid
+`http` or `https` URL.
+
+Each page read has a 20-second deadline in Balanced and Quality modes, covering
+Firecrawl and the built-in fallback readers. Keep `FIRECRAWL_TIMEOUT_MS` below
+that so a slow Firecrawl request still leaves time for the fallback.
 
 ## Deploy The Test Build
 

@@ -11,6 +11,20 @@ type Video = {
   iframe_src: string;
 };
 
+// youtube-nocookie embeds can refuse to play inside the lightbox frame.
+const getPlayableIframeSrc = (iframeSrc: string) => {
+  try {
+    const url = new URL(iframeSrc);
+    if (url.hostname.endsWith('youtube-nocookie.com')) {
+      url.hostname = 'www.youtube.com';
+    }
+    url.searchParams.set('enablejsapi', '1');
+    return url.toString();
+  } catch {
+    return `${iframeSrc}${iframeSrc.includes('?') ? '&' : '?'}enablejsapi=1`;
+  }
+};
+
 declare module 'yet-another-react-lightbox' {
   export interface VideoSlide extends GenericSlide {
     type: 'video-slide';
@@ -201,7 +215,7 @@ const SearchVideos = ({
                   <div className="h-full w-full flex items-center justify-center">
                     <iframe
                       title={slide.title}
-                      src={`${slide.iframe_src}${slide.iframe_src.includes('?') ? '&' : '?'}enablejsapi=1`}
+                      src={getPlayableIframeSrc(slide.iframe_src)}
                       ref={(el) => {
                         videoRefs.current[index] = el;
                       }}

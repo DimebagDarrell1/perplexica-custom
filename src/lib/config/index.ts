@@ -139,6 +139,38 @@ class ConfigManager {
           'Saved on this server and masked when settings load. For OpenRouter, use a separate key with a credit limit. Clear the field to remove the saved key.',
       },
       {
+        name: 'Enable Firecrawl page reading',
+        key: 'firecrawlEnabled',
+        type: 'switch',
+        required: false,
+        default: false,
+        scope: 'server',
+        description:
+          'Read pages through your Firecrawl server in Balanced and Quality modes. It handles JavaScript-heavy pages better. Pages it cannot read fall back to the built-in reader.',
+      },
+      {
+        name: 'Firecrawl URL',
+        key: 'firecrawlApiUrl',
+        type: 'string',
+        required: false,
+        scope: 'server',
+        env: 'FIRECRAWL_API_URL',
+        placeholder: 'http://your-firecrawl-host:3002',
+        description:
+          'Base URL of your Firecrawl API, without /v2. Prefer an address on your local network or tailnet.',
+      },
+      {
+        name: 'Firecrawl API key',
+        key: 'firecrawlApiKey',
+        type: 'password',
+        required: false,
+        scope: 'server',
+        env: 'FIRECRAWL_API_KEY',
+        placeholder: 'Leave empty if your server needs no key',
+        description:
+          'Saved on this server and masked when settings load. Clear the field to remove the saved key.',
+      },
+      {
         name: 'SearXNG URL',
         key: 'searxngURL',
         type: 'string',

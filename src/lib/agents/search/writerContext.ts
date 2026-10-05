@@ -37,26 +37,39 @@ const MODE_CONTEXT_FILTER_CONFIG: Record<
   SearchAgentConfig['mode'],
   Pick<
     ContextFilterConfig,
-    'topKUrls' | 'topKChunks' | 'maxCandidateResults' | 'preferFirecrawl'
+    | 'topKUrls'
+    | 'topKChunks'
+    | 'maxCandidateResults'
+    | 'preferFirecrawl'
+    | 'readConcurrency'
+    | 'pageTimeoutMs'
   >
 > = {
+  // Page deadlines stay well inside each mode's context deadline (15 s for
+  // Speed, 45 s otherwise) so finished reads are used instead of recovered.
   speed: {
     topKUrls: 3,
     topKChunks: 15,
     maxCandidateResults: MODE_SEARCH_LIMITS.speed.maxCandidateResults,
     preferFirecrawl: false,
+    readConcurrency: 3,
+    pageTimeoutMs: 9_000,
   },
   balanced: {
     topKUrls: 10,
     topKChunks: 30,
     maxCandidateResults: MODE_SEARCH_LIMITS.balanced.maxCandidateResults,
     preferFirecrawl: true,
+    readConcurrency: 6,
+    pageTimeoutMs: 20_000,
   },
   quality: {
     topKUrls: 20,
     topKChunks: 60,
     maxCandidateResults: MODE_SEARCH_LIMITS.quality.maxCandidateResults,
     preferFirecrawl: true,
+    readConcurrency: 8,
+    pageTimeoutMs: 20_000,
   },
 };
 

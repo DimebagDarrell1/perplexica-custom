@@ -388,3 +388,20 @@ test('long streamed answers retain one block instead of every growing patch', ()
   assert.equal(replay.block.data.length, 100_000);
   unsubscribe();
 });
+
+test('a quiet stream sends keepAlive lines and stops them when it closes', async () => {
+  const session = new Session();
+  const response = sessionResponse(session, new AbortController().signal, 20);
+  assert.equal(response.headers.get('x-accel-buffering'), 'no');
+  const events = [];
+  const reading = readJsonLines(response.body, (data) => {
+    events.push(data);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  session.emit('end', { status: 'completed' });
+  await reading;
+  const types = events.map((event) => event.type);
+  assert.equal(types[0], 'session');
+  assert.ok(types.filter((type) => type === 'keepAlive').length >= 1);
+  assert.equal(types.at(-1), 'messageEnd');
+});

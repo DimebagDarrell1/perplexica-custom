@@ -11,6 +11,7 @@ import LMStudioProvider from './lmstudio';
 import MinimaxProvider from './minimax';
 import OpenRouterProvider from './openrouter';
 import ZAIProvider from './zai';
+import ChatGPTPlanProvider from './chatgpt';
 
 export const providers: Record<string, ProviderConstructor<any>> = {
   openai: OpenAIProvider,
@@ -24,6 +25,7 @@ export const providers: Record<string, ProviderConstructor<any>> = {
   minimax: MinimaxProvider,
   openrouter: OpenRouterProvider,
   zai: ZAIProvider,
+  chatgpt: ChatGPTPlanProvider,
 };
 
 export const getModelProvidersUIConfigSection =

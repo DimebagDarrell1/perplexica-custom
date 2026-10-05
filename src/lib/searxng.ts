@@ -117,15 +117,15 @@ const isMediaSearch = (opts?: SearxngSearchOptions): boolean =>
     ),
   );
 
+// Engines that answer on the pinned SearXNG build. Startpage and Mojeek are
+// inactive there, and `aol` is not an engine name, so they returned nothing.
 const DEFAULT_ENGINES = [
-  'brave',
+  'google cse',
   'bing',
-  'startpage',
+  'brave',
   'yandex',
-  'crowdview',
-  'mojeek',
+  'yahoo',
   'wikipedia',
-  'aol',
 ];
 
 export const searchSearxng = async (

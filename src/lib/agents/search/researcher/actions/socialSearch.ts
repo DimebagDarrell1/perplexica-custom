@@ -11,6 +11,15 @@ const schema = z.object({
   queries: z.array(z.string()).describe('List of social search queries'),
 });
 
+const isRedditResult = (result: { url: string }) => {
+  try {
+    const host = new URL(result.url).hostname.toLowerCase();
+    return host === 'reddit.com' || host.endsWith('.reddit.com');
+  } catch {
+    return false;
+  }
+};
+
 const socialSearchDescription = `
 Use this tool to perform social media searches for relevant posts, discussions, and trends related to the user's query. Provide a list of concise search queries that will help gather comprehensive social media information on the topic at hand.
 You can provide up to 3 queries at a time. Make sure the queries are specific and relevant to the user's needs.
@@ -66,11 +75,13 @@ const socialSearchAction: ResearchAction<typeof schema> = {
     const search = async (q: string) => {
       let res;
       try {
-        res = await searchSearxng(q, {
+        // SearXNG removed its Reddit engine, so search Reddit through the
+        // general engines and keep only Reddit pages.
+        res = await searchSearxng(`site:reddit.com ${q}`, {
           signal: additionalConfig.session.signal,
-          engines: ['reddit'],
-          maxResults,
+          maxResults: maxResults * 2,
         });
+        res.results = res.results.filter(isRedditResult).slice(0, maxResults);
       } catch (error) {
         additionalConfig.session.signal.throwIfAborted();
         console.error(`Social search failed for query "${q}":`, error);

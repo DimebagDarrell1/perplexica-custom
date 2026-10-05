@@ -1,6 +1,6 @@
 'use client';
 
-import { Cpu, Loader2, Search } from 'lucide-react';
+import { Cpu, ExternalLink, Loader2, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -56,6 +56,10 @@ const ModelSelector = () => {
     return [selectedProvider, ...remainingProviders];
   }, [providers, chatModelProvider]);
 
+  const usingChatGPTPlan =
+    providers.find((p) => p.id === chatModelProvider?.providerId)?.type ===
+    'chatgpt';
+
   const handleModelSelect = (providerId: string, modelKey: string) => {
     setChatModelProvider({ providerId, key: modelKey });
     localStorage.setItem('chatModelProviderId', providerId);
@@ -79,6 +83,11 @@ const ModelSelector = () => {
         <>
           <PopoverButton
             type="button"
+            aria-label={
+              usingChatGPTPlan
+                ? 'Choose model, using ChatGPT plan'
+                : 'Choose model'
+            }
             className="active:border-none hover:bg-light-200  hover:dark:bg-dark-200 p-2 rounded-lg focus:outline-none headless-open:text-black dark:headless-open:text-white text-black/50 dark:text-white/50 active:scale-95 transition duration-200 hover:text-black dark:hover:text-white"
           >
             <Cpu size={16} className="text-sky-500" />
@@ -190,6 +199,20 @@ const ModelSelector = () => {
                       </div>
                     )}
                   </div>
+                  {usingChatGPTPlan && (
+                    <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-t border-light-200 dark:border-dark-200 text-xs text-black/70 dark:text-white/70">
+                      <span>Using ChatGPT plan</span>
+                      <a
+                        href="https://chatgpt.com/settings/usage"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-accent dark:text-accent-dark hover:underline"
+                      >
+                        Manage usage
+                        <ExternalLink size={12} aria-hidden="true" />
+                      </a>
+                    </div>
+                  )}
                 </motion.div>
               </PopoverPanel>
             )}

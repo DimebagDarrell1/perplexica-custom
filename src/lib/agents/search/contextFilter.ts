@@ -10,6 +10,7 @@ import {
 } from './fallbackEvidence';
 import type { Chunk } from '@/lib/types';
 import Scraper from '@/lib/scraper';
+import { getFirecrawlConfig, type FirecrawlConfig } from '@/lib/firecrawl';
 import {
   buildDiverseCandidatePool,
   dedupeEvidenceChunks,
@@ -66,6 +67,10 @@ export type ContextFilterConfig = {
   maxCandidateResults: number;
   /** Prefer Firecrawl before native extraction for deep reading. */
   preferFirecrawl: boolean;
+  /** Pages read at the same time. */
+  readConcurrency: number;
+  /** Deadline for one page, covering Firecrawl and every native fallback. */
+  pageTimeoutMs: number;
 };
 
 const DEFAULT_CONFIG: ContextFilterConfig = {
@@ -77,6 +82,8 @@ const DEFAULT_CONFIG: ContextFilterConfig = {
   maxPageLength: 50000,
   maxCandidateResults: 36,
   preferFirecrawl: false,
+  readConcurrency: 5,
+  pageTimeoutMs: 20_000,
 };
 
 const MAX_SNIPPET_EMBEDDING_CHARS = 8000;
@@ -138,7 +145,8 @@ export const rankResultsByRelevance = async (
 
 /**
  * Stage 2: Scrape the top-K relevant URLs and convert HTML to markdown.
- * Fetches pages in parallel with a concurrency limit.
+ * A small worker pool starts the next URL as soon as any read finishes, so
+ * one slow page cannot hold back the rest. Each read has its own deadline.
  * URLs pointing to private/internal networks are silently skipped (SSRF protection).
  */
 export const scrapeRelevantUrls = async (
@@ -147,8 +155,14 @@ export const scrapeRelevantUrls = async (
   preferFirecrawl: boolean,
   signal?: AbortSignal,
   onPage?: (page: ScrapedPage) => void,
+  options: {
+    concurrency?: number;
+    pageTimeoutMs?: number;
+    firecrawl?: FirecrawlConfig;
+  } = {},
 ): Promise<ScrapedPage[]> => {
-  const CONCURRENCY_LIMIT = 5;
+  const concurrency = Math.max(1, options.concurrency ?? 5);
+  const pageTimeoutMs = options.pageTimeoutMs ?? 20_000;
 
   const truncateContent = (content: string) =>
     content.length > maxPageLength
@@ -164,50 +178,67 @@ export const scrapeRelevantUrls = async (
     ),
   ];
 
-  const results: ScrapedPage[] = [];
+  // Keep ranked order in the output, whatever order the reads finish in.
+  const pages: (ScrapedPage | null)[] = new Array(urls.length).fill(null);
 
-  // Process URLs in batches to avoid overwhelming the network
-  for (let i = 0; i < urls.length; i += CONCURRENCY_LIMIT) {
-    throwIfAborted(signal);
-
-    const batch = urls.slice(i, i + CONCURRENCY_LIMIT);
-
-    const batchResults = await Promise.allSettled(
-      batch.map(async (url) => {
-        try {
-          throwIfAborted(signal);
-          const scrape = () => Scraper.scrape(url, { preferFirecrawl, signal });
-          const scraped = await (signal ? abortable(scrape, signal) : scrape());
-          throwIfAborted(signal);
-          const page = {
-            url: scraped.url,
-            sourceUrl: url,
-            title: scraped.title,
-            content: truncateContent(scraped.content),
-            provider: scraped.provider,
-            cached: scraped.cached === true,
-            discoveryMetadata: rankedResults.find(
-              ({ chunk }) => chunk.metadata.url === url,
-            )?.chunk.metadata,
-          };
-          onPage?.(page);
-          return page;
-        } catch {
-          throwIfAborted(signal);
-          return null;
-        }
-      }),
+  const readPage = async (url: string): Promise<ScrapedPage | null> => {
+    const deadline = new AbortController();
+    const timer = setTimeout(
+      () =>
+        deadline.abort(new DOMException('Page read timed out', 'TimeoutError')),
+      pageTimeoutMs,
     );
-
-    for (const result of batchResults) {
-      if (result.status === 'fulfilled' && result.value) {
-        results.push(result.value);
-      }
+    const pageSignal = signal
+      ? AbortSignal.any([signal, deadline.signal])
+      : deadline.signal;
+    try {
+      throwIfAborted(signal);
+      const scraped = await abortable(
+        () =>
+          Scraper.scrape(url, {
+            preferFirecrawl,
+            signal: pageSignal,
+            firecrawl: options.firecrawl,
+          }),
+        pageSignal,
+      );
+      throwIfAborted(signal);
+      const page = {
+        url: scraped.url,
+        sourceUrl: url,
+        title: scraped.title,
+        content: truncateContent(scraped.content),
+        provider: scraped.provider,
+        cached: scraped.cached === true,
+        discoveryMetadata: rankedResults.find(
+          ({ chunk }) => chunk.metadata.url === url,
+        )?.chunk.metadata,
+      };
+      onPage?.(page);
+      return page;
+    } catch {
+      // A page deadline only drops this page; cancellation stops everything.
+      throwIfAborted(signal);
+      return null;
+    } finally {
+      clearTimeout(timer);
     }
-  }
+  };
+
+  let next = 0;
+  const worker = async () => {
+    while (next < urls.length) {
+      throwIfAborted(signal);
+      const index = next++;
+      pages[index] = await readPage(urls[index]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, urls.length) }, worker),
+  );
 
   throwIfAborted(signal);
-  return results;
+  return pages.filter((page): page is ScrapedPage => page !== null);
 };
 
 // ---------------------------------------------------------------------------
@@ -521,6 +552,7 @@ export const buildFilteredContext = async (
 
   // Stage 2: Scrape the top-ranked URLs
   const completedPages = new Map<string, ScrapedPage>();
+  const firecrawl = getFirecrawlConfig(configManager.getConfig('search', {}));
   const scrapedPages = await scrapeRelevantUrls(
     rankedResults,
     fullConfig.maxPageLength,
@@ -563,6 +595,11 @@ export const buildFilteredContext = async (
         jevUsed,
         stage: 'scraped',
       });
+    },
+    {
+      concurrency: fullConfig.readConcurrency,
+      pageTimeoutMs: fullConfig.pageTimeoutMs,
+      firecrawl,
     },
   );
   throwIfAborted(signal);

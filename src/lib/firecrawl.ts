@@ -62,17 +62,46 @@ const readPositiveInteger = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 };
 
-export const getFirecrawlConfig = () => {
-  const apiUrl = (process.env.FIRECRAWL_API_URL || '').replace(/\/+$/, '');
+const savedString = (value: unknown) =>
+  typeof value === 'string' ? value.trim() : '';
+
+const isHttpUrl = (value: string) => {
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Saved Settings → Search values win over environment variables, matching
+ * the Jev settings. An invalid URL leaves Firecrawl disabled.
+ */
+export const getFirecrawlConfig = (saved: Record<string, unknown> = {}) => {
+  const rawUrl = (
+    savedString(saved.firecrawlApiUrl) ||
+    process.env.FIRECRAWL_API_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/+$/, '');
+  const apiUrl = isHttpUrl(rawUrl) ? rawUrl : '';
+  const enabledSetting =
+    saved.firecrawlEnabled ?? process.env.FIRECRAWL_ENABLED;
   const enabled =
-    process.env.FIRECRAWL_ENABLED?.toLowerCase() === 'true' && !!apiUrl;
+    (enabledSetting === true ||
+      (typeof enabledSetting === 'string' &&
+        enabledSetting.toLowerCase() === 'true')) &&
+    !!apiUrl;
 
   return {
     enabled,
     apiUrl,
-    apiKey: process.env.FIRECRAWL_API_KEY || '',
+    apiKey:
+      savedString(saved.firecrawlApiKey) || process.env.FIRECRAWL_API_KEY || '',
+    // Leave part of the per-page reading deadline for native fallback.
     timeoutMs: Math.min(
-      readPositiveInteger(process.env.FIRECRAWL_TIMEOUT_MS, 20_000),
+      readPositiveInteger(process.env.FIRECRAWL_TIMEOUT_MS, 15_000),
       60_000,
     ),
     maxAgeMs: readPositiveInteger(process.env.FIRECRAWL_MAX_AGE_MS, 3_600_000),
@@ -113,12 +142,14 @@ const setCached = (
   });
 };
 
+export type FirecrawlConfig = ReturnType<typeof getFirecrawlConfig>;
+
 export const scrapeWithFirecrawl = async (
   url: string,
   signal?: AbortSignal,
+  config: FirecrawlConfig = getFirecrawlConfig(),
 ): Promise<FirecrawlScrapeResult> => {
   signal?.throwIfAborted();
-  const config = getFirecrawlConfig();
   if (!config.enabled) {
     throw new Error('Firecrawl is not enabled');
   }
@@ -191,14 +222,15 @@ export const scrapeWithFirecrawl = async (
   }
 };
 
-export const checkFirecrawlHealth = async (): Promise<{
+export const checkFirecrawlHealth = async (
+  config: FirecrawlConfig = getFirecrawlConfig(),
+): Promise<{
   enabled: boolean;
   configured: boolean;
   reachable: boolean;
   status?: number;
   error?: string;
 }> => {
-  const config = getFirecrawlConfig();
   if (!config.apiUrl) {
     return { enabled: false, configured: false, reachable: false };
   }

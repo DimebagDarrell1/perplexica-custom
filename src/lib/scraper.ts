@@ -1,5 +1,9 @@
 import { Mutex } from 'async-mutex';
-import { getFirecrawlConfig, scrapeWithFirecrawl } from './firecrawl';
+import {
+  getFirecrawlConfig,
+  scrapeWithFirecrawl,
+  type FirecrawlConfig,
+} from './firecrawl';
 import { assertSafePublicUrl } from './web/urlSafety';
 import { safeFetch } from './web/safeFetch';
 import { secureBrowserContext } from './web/browserNetwork';
@@ -20,6 +24,8 @@ export type ScrapeResult = {
 export type ScrapeOptions = {
   preferFirecrawl?: boolean;
   signal?: AbortSignal;
+  /** Resolved Settings → Search values; defaults to environment variables. */
+  firecrawl?: FirecrawlConfig;
 };
 
 class Scraper {
@@ -160,9 +166,10 @@ class Scraper {
     options.signal?.throwIfAborted();
     await assertSafePublicUrl(url);
 
-    if (options.preferFirecrawl && getFirecrawlConfig().enabled) {
+    const firecrawl = options.firecrawl ?? getFirecrawlConfig();
+    if (options.preferFirecrawl && firecrawl.enabled) {
       try {
-        return await scrapeWithFirecrawl(url, options.signal);
+        return await scrapeWithFirecrawl(url, options.signal, firecrawl);
       } catch (error) {
         options.signal?.throwIfAborted();
         console.warn(

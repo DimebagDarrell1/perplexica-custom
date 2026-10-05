@@ -7,6 +7,7 @@ import {
 } from '@/lib/config/types';
 import ModelProvider from './ModelProvider';
 import ModelSelect from './ModelSelect';
+import ChatGPTPlanAccount from './ChatGPTPlanAccount';
 
 const Models = ({
   fields,
@@ -37,11 +38,18 @@ const Models = ({
         />
       </div>
       <div className="border-t border-light-200 dark:border-dark-200" />
+      <div className="px-6">
+        <ChatGPTPlanAccount />
+      </div>
       <div className="flex flex-row justify-between items-center px-6 ">
         <p className="text-xs lg:text-xs text-black/70 dark:text-white/70">
           Manage connections
         </p>
-        <AddProvider modelProviders={fields} setProviders={setProviders} />
+        {/* ChatGPT plan connects through the sign-in panel above. */}
+        <AddProvider
+          modelProviders={fields.filter((field) => field.key !== 'chatgpt')}
+          setProviders={setProviders}
+        />
       </div>
       <div className="flex flex-col px-6 gap-y-4">
         {providers.length === 0 ? (

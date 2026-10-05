@@ -10,11 +10,13 @@ export const GET = async (request: Request) => {
   const unauthorized = requireAdminToken(request);
   if (unauthorized) return unauthorized;
 
+  const firecrawlConfig = getFirecrawlConfig(
+    configManager.getConfig('search', {}),
+  );
   const [searxng, firecrawl] = await Promise.all([
     checkSearxngHealth(),
-    checkFirecrawlHealth(),
+    checkFirecrawlHealth(firecrawlConfig),
   ]);
-  const firecrawlConfig = getFirecrawlConfig();
 
   const status = !searxng.reachable
     ? 'unhealthy'

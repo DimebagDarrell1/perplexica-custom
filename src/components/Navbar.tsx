@@ -27,9 +27,23 @@ const downloadFile = (filename: string, content: string, type: string) => {
   }, 0);
 };
 
+// Exports use the saved answer text. The parsed display text carries
+// <citation> markup for the renderer, and reasoning sits inside <think>.
+const getExportAnswerText = (section: Section) =>
+  section.message.responseBlocks
+    .filter((block) => block.type === 'text')
+    .map((block) =>
+      String(block.data)
+        .replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '')
+        .replace(/^[\s\S]*?<\/think>/, '')
+        .trim(),
+    )
+    .filter(Boolean)
+    .join('\n\n');
+
 const exportAsMarkdown = (sections: Section[], title: string) => {
   const date = new Date(
-    sections[0].message.createdAt || Date.now(),
+    sections[0]?.message?.createdAt || Date.now(),
   ).toLocaleString();
   let md = `# 💬 Chat Export: ${title}\n\n`;
   md += `*Exported on: ${date}*\n\n---\n`;
@@ -46,11 +60,7 @@ const exportAsMarkdown = (sections: Section[], title: string) => {
       md += `**🤖 Assistant**  
 `;
       md += `*${new Date(section.message.createdAt).toLocaleString()}*\n\n`;
-      md += `> ${section.message.responseBlocks
-        .filter((b) => b.type === 'text')
-        .map((block) => block.data)
-        .join('\n')
-        .replace(/\n/g, '\n> ')}\n`;
+      md += `> ${getExportAnswerText(section).replace(/\n/g, '\n> ')}\n`;
     }
 
     const sourceResponseBlock = section.message.responseBlocks.find(
@@ -143,7 +153,7 @@ const exportAsPDF = (sections: Section[], title: string) => {
       doc.setTextColor(30);
       doc.setFontSize(12);
       const assistantLines = doc.splitTextToSize(
-        section.parsedTextBlocks.join('\n'),
+        getExportAnswerText(section),
         180,
       );
       for (let i = 0; i < assistantLines.length; i++) {

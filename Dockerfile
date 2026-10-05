@@ -57,7 +57,7 @@ USER searxng
 RUN git clone "https://github.com/searxng/searxng" \
                    "/usr/local/searxng/searxng-src" && \
     cd "/usr/local/searxng/searxng-src" && \
-    git checkout d4954a06466038ef35e1f234e4fec712aab88a7f
+    git checkout d48c4b555421e824342c51d68482dd0898e54d0f
 
 RUN python3 -m venv "/usr/local/searxng/searx-pyenv"
 RUN "/usr/local/searxng/searx-pyenv/bin/pip" install --upgrade pip setuptools wheel pyyaml msgspec typing_extensions
